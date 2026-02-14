@@ -1,0 +1,13 @@
+[package]
+name = "istok-core"
+version = "0.0.1"
+edition = "2024"
+
+[features]
+default = ["alloc"]
+alloc = []
+std = ["alloc"]
+
+[dependencies]
+# Empty for now: start with a clean core/alloc
+# If you need `http` later, include it in istok-http, not here

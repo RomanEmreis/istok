@@ -1,0 +1,8 @@
+[package]
+name = "istok-io-tokio"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["net", "time", "rt-multi-thread", "macros"] }
+istok-transport = { path = "../istok-transport" }

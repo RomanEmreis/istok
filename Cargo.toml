@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/istok-core",
+  "crates/istok-transport",
+  "crates/istok-h3",
+  "crates/istok-io-tokio",
+  "crates/istok-server",
+  "crates/istok-http",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://example.com/istok"
+rust-version = "1.90"
+
+[workspace.dependencies]
+# Approach: default-features = false to avoid dragging std where it's not needed
+# http = { version = "1", default-features = false }
