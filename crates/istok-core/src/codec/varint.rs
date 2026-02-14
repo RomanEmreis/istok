@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use core::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

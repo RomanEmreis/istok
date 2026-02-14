@@ -47,3 +47,7 @@ M4: Backpressure, memory discipline, performance profiling & metrics hooks
 
 ## Decision log
 Architecture-affecting decisions must be captured in `docs/rfcs/` before large refactors.
+## Offline workspace policy
+- Never modify workspace members.
+- Never set `RUSTUP_TOOLCHAIN` or use `cargo +<toolchain>`.
+- In no-network sandboxes run `cargo test -p istok-core --locked` (no `--offline`).
