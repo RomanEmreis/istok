@@ -47,3 +47,18 @@ M4: Backpressure, memory discipline, performance profiling & metrics hooks
 
 ## Decision log
 Architecture-affecting decisions must be captured in `docs/rfcs/` before large refactors.
+
+## Scaffolding is intentional
+- Do NOT delete or collapse placeholder modules/files (even if currently unused).
+- Keep the planned crate/module structure stable.
+- If something is unused, prefer leaving it in place with a short comment, or gate it behind a feature.
+- Any removal/renaming of scaffold files requires an RFC or explicit instruction.
+
+## Reproducible builds & network
+- Network access is available, but keep builds reproducible.
+- Never set `RUSTUP_TOOLCHAIN` and never use `cargo +<toolchain>`.
+- Do not modify workspace members to “fix” build issues.
+- Always run Cargo commands with `--locked` (tests, clippy, build).
+- Do not update `Cargo.lock` unless explicitly requested.
+- New dependencies require a short justification and must be minimal.
+- `istok-core` must remain `no_std`-friendly: avoid `std`-only deps there; prefer `default-features = false`.

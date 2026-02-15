@@ -19,7 +19,12 @@ pub enum EngineCommand<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TimerId(pub u32);
 
+/// Object-safe command sink.
+pub trait CommandSink<'a> {
+    fn push(&mut self, cmd: EngineCommand<'a>);
+}
+
 /// Pure engine step: consumes exactly one event and yields zero or more commands.
 pub trait Engine {
-    fn on_event<'a>(&mut self, ev: EngineEvent<'a>, out: &mut dyn Extend<EngineCommand<'a>>);
+    fn on_event<'a>(&mut self, ev: EngineEvent<'a>, out: &mut dyn CommandSink<'a>);
 }
