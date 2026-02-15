@@ -1,5 +1,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate alloc;
+
+use alloc::vec::Vec;
 use core::fmt;
 
 /// QUIC stream id is a QUIC varint in the wire, but we keep it as u64.
@@ -27,7 +30,11 @@ pub enum QuicEvent<'a> {
     StreamOpened { id: StreamId, kind: StreamKind },
 
     /// Bytes received on stream (ordered, reliable).
-    StreamReadable { id: StreamId, data: &'a [u8], fin: bool },
+    StreamReadable {
+        id: StreamId,
+        data: &'a [u8],
+        fin: bool,
+    },
 
     /// Peer reset/stop-sending.
     StreamError { id: StreamId, err: StreamError },
@@ -42,8 +49,19 @@ pub enum QuicCommand<'a> {
     /// Open a uni stream initiated by us (needed for H3 control/QPACK streams).
     OpenUni { id_hint: Option<StreamId> },
 
-    /// Write bytes to stream (may be partial at runtime; mock can enforce full).
-    StreamWrite { id: StreamId, data: &'a [u8], fin: bool },
+    /// Write borrowed bytes to stream (may be partial at runtime; mock can enforce full).
+    StreamWrite {
+        id: StreamId,
+        data: &'a [u8],
+        fin: bool,
+    },
+
+    /// Write owned bytes to stream.
+    StreamWriteOwned {
+        id: StreamId,
+        data: Vec<u8>,
+        fin: bool,
+    },
 
     /// Reset stream (sender side).
     ResetStream { id: StreamId, app_error: u64 },

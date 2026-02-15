@@ -1,6 +1,4 @@
 use crate::engine::{CommandSink, Engine, EngineCommand, EngineEvent};
-use alloc::boxed::Box;
-use alloc::vec::Vec;
 use istok_core::codec::{h3_frame, varint};
 use istok_core::h3::{consts, settings::Settings};
 use istok_transport::{QuicCommand, StreamId};
@@ -77,11 +75,9 @@ impl Engine for H3Engine {
                     };
 
                 let total = stream_type_len + header_len;
-                let write_bytes: &'static [u8] =
-                    Box::leak(Vec::from(&bytes[..total]).into_boxed_slice());
-                out.push(EngineCommand::Quic(QuicCommand::StreamWrite {
+                out.push(EngineCommand::Quic(QuicCommand::StreamWriteOwned {
                     id,
-                    data: write_bytes,
+                    data: bytes[..total].to_vec(),
                     fin: false,
                 }));
             }

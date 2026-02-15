@@ -10,8 +10,15 @@ use istok_transport::{QuicCommand, QuicEvent, StreamId, StreamKind};
 #[derive(Clone, Debug)]
 pub enum ScriptStep {
     InBoot,
-    InQuicOpen { id: StreamId, kind: StreamKind },
-    InQuicData { id: StreamId, data: Vec<u8>, fin: bool },
+    InQuicOpen {
+        id: StreamId,
+        kind: StreamKind,
+    },
+    InQuicData {
+        id: StreamId,
+        data: Vec<u8>,
+        fin: bool,
+    },
     InTimer(TimerId),
     InShutdown,
 
@@ -29,9 +36,15 @@ pub enum ExpectCommand {
         data_prefix: Vec<u8>,
         fin: bool,
     },
-    QuicCloseConnection { app_error: u64 },
-    ArmTimer { id: TimerId },
-    CancelTimer { id: TimerId },
+    QuicCloseConnection {
+        app_error: u64,
+    },
+    ArmTimer {
+        id: TimerId,
+    },
+    CancelTimer {
+        id: TimerId,
+    },
 }
 
 pub struct MockHarness<E: Engine> {
@@ -42,10 +55,21 @@ pub struct MockHarness<E: Engine> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum EngineCommandOwned {
     QuicOpenUni,
-    QuicStreamWrite { id: StreamId, data: Vec<u8>, fin: bool },
-    QuicCloseConnection { app_error: u64 },
-    ArmTimer { id: TimerId, deadline_ms_from_now: u64 },
-    CancelTimer { id: TimerId },
+    QuicStreamWrite {
+        id: StreamId,
+        data: Vec<u8>,
+        fin: bool,
+    },
+    QuicCloseConnection {
+        app_error: u64,
+    },
+    ArmTimer {
+        id: TimerId,
+        deadline_ms_from_now: u64,
+    },
+    CancelTimer {
+        id: TimerId,
+    },
 }
 
 struct VecSink<'a> {
@@ -53,7 +77,9 @@ struct VecSink<'a> {
 }
 
 impl<'a> VecSink<'a> {
-    fn new() -> Self { Self { out: Vec::new() } }
+    fn new() -> Self {
+        Self { out: Vec::new() }
+    }
 }
 
 impl<'a> CommandSink<'a> for VecSink<'a> {
@@ -62,10 +88,12 @@ impl<'a> CommandSink<'a> for VecSink<'a> {
     }
 }
 
-
 impl<E: Engine> MockHarness<E> {
     pub fn new(engine: E) -> Self {
-        Self { engine, pending: Vec::new() }
+        Self {
+            engine,
+            pending: Vec::new(),
+        }
     }
 
     pub fn run_script(&mut self, script: &[ScriptStep]) {
@@ -75,11 +103,18 @@ impl<E: Engine> MockHarness<E> {
             match step {
                 ScriptStep::InBoot => self.step(EngineEvent::Boot),
                 ScriptStep::InQuicOpen { id, kind } => {
-                    let ev = QuicEvent::StreamOpened { id: *id, kind: *kind };
+                    let ev = QuicEvent::StreamOpened {
+                        id: *id,
+                        kind: *kind,
+                    };
                     self.step(EngineEvent::Quic(ev));
                 }
                 ScriptStep::InQuicData { id, data, fin } => {
-                    let ev = QuicEvent::StreamReadable { id: *id, data: data.as_slice(), fin: *fin };
+                    let ev = QuicEvent::StreamReadable {
+                        id: *id,
+                        data: data.as_slice(),
+                        fin: *fin,
+                    };
                     self.step(EngineEvent::Quic(ev));
                 }
                 ScriptStep::InTimer(id) => self.step(EngineEvent::TimerFired(*id)),
@@ -113,7 +148,10 @@ impl<E: Engine> MockHarness<E> {
         let got = self.pending.remove(0);
         match (exp, got) {
             (ExpectCommand::QuicOpenUni, EngineCommandOwned::QuicOpenUni) => {}
-            (ExpectCommand::QuicCloseConnection { app_error }, EngineCommandOwned::QuicCloseConnection { app_error: a }) => {
+            (
+                ExpectCommand::QuicCloseConnection { app_error },
+                EngineCommandOwned::QuicCloseConnection { app_error: a },
+            ) => {
                 assert_eq!(*app_error, a);
             }
             (ExpectCommand::ArmTimer { id }, EngineCommandOwned::ArmTimer { id: got, .. }) => {
@@ -123,8 +161,16 @@ impl<E: Engine> MockHarness<E> {
                 assert_eq!(*id, got);
             }
             (
-                ExpectCommand::QuicStreamWrite { id, data_prefix, fin },
-                EngineCommandOwned::QuicStreamWrite { id: got_id, data, fin: got_fin },
+                ExpectCommand::QuicStreamWrite {
+                    id,
+                    data_prefix,
+                    fin,
+                },
+                EngineCommandOwned::QuicStreamWrite {
+                    id: got_id,
+                    data,
+                    fin: got_fin,
+                },
             ) => {
                 assert_eq!(*id, got_id);
                 assert_eq!(*fin, got_fin);
@@ -155,16 +201,33 @@ fn to_owned<'a>(cmd: EngineCommand<'a>) -> EngineCommandOwned {
                 data: data.to_vec(),
                 fin,
             },
-            QuicCommand::CloseConnection { app_error } => EngineCommandOwned::QuicCloseConnection { app_error },
+            QuicCommand::StreamWriteOwned { id, data, fin } => {
+                EngineCommandOwned::QuicStreamWrite { id, data, fin }
+            }
+            QuicCommand::CloseConnection { app_error } => {
+                EngineCommandOwned::QuicCloseConnection { app_error }
+            }
             // Add more as engine grows:
-            QuicCommand::ResetStream { id: _, app_error: _ } => {
+            QuicCommand::ResetStream {
+                id: _,
+                app_error: _,
+            } => {
                 panic!("ResetStream not yet supported by MockHarness expectations")
             }
-            QuicCommand::StopSending { id: _, app_error: _ } => {
+            QuicCommand::StopSending {
+                id: _,
+                app_error: _,
+            } => {
                 panic!("StopSending not yet supported by MockHarness expectations")
             }
         },
-        EngineCommand::ArmTimer { id, deadline_ms_from_now } => EngineCommandOwned::ArmTimer { id, deadline_ms_from_now },
+        EngineCommand::ArmTimer {
+            id,
+            deadline_ms_from_now,
+        } => EngineCommandOwned::ArmTimer {
+            id,
+            deadline_ms_from_now,
+        },
         EngineCommand::CancelTimer { id } => EngineCommandOwned::CancelTimer { id },
     }
 }
