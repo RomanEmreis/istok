@@ -48,7 +48,11 @@ M4: Backpressure, memory discipline, performance profiling & metrics hooks
 ## Decision log
 Architecture-affecting decisions must be captured in `docs/rfcs/` before large refactors.
 
-## Offline workspace policy
-- Never modify workspace members.
-- Never set `RUSTUP_TOOLCHAIN` or use `cargo +<toolchain>`.
-- In no-network sandboxes run `cargo test -p istok-core --locked` (no `--offline`).
+## Reproducible builds & network
+- Network access is available, but keep builds reproducible.
+- Never set `RUSTUP_TOOLCHAIN` and never use `cargo +<toolchain>`.
+- Do not modify workspace members to “fix” build issues.
+- Always run Cargo commands with `--locked` (tests, clippy, build).
+- Do not update `Cargo.lock` unless explicitly requested.
+- New dependencies require a short justification and must be minimal.
+- `istok-core` must remain `no_std`-friendly: avoid `std`-only deps there; prefer `default-features = false`.
