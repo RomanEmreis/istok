@@ -35,6 +35,8 @@ impl Engine for H3Engine {
                 }));
 
                 let settings = Settings::new();
+
+                // M0: settings payload is empty; later this will be a real buffer.
                 let mut payload_buf = [0u8; 0];
                 let payload_len = match settings.encode_payload(&mut payload_buf) {
                     Ok(len) => len,
