@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use crate::engine::{Engine, EngineCommand, EngineEvent, TimerId};
+use crate::engine::{CommandSink, Engine, EngineCommand, EngineEvent, TimerId};
 use istok_transport::{QuicCommand, QuicEvent, StreamId, StreamKind};
 
 #[derive(Clone, Debug)]
@@ -48,6 +48,21 @@ enum EngineCommandOwned {
     CancelTimer { id: TimerId },
 }
 
+struct VecSink<'a> {
+    out: Vec<EngineCommand<'a>>,
+}
+
+impl<'a> VecSink<'a> {
+    fn new() -> Self { Self { out: Vec::new() } }
+}
+
+impl<'a> CommandSink<'a> for VecSink<'a> {
+    fn push(&mut self, cmd: EngineCommand<'a>) {
+        self.out.push(cmd);
+    }
+}
+
+
 impl<E: Engine> MockHarness<E> {
     pub fn new(engine: E) -> Self {
         Self { engine, pending: Vec::new() }
@@ -82,14 +97,11 @@ impl<E: Engine> MockHarness<E> {
     }
 
     fn step<'a>(&mut self, ev: EngineEvent<'a>) {
-        // New input step resets pending batch.
-        self.pending.clear();
-
-        let mut out: Vec<EngineCommand<'a>> = Vec::new();
-        self.engine.on_event(ev, &mut out);
+        let mut sink = VecSink::new();
+        self.engine.on_event(ev, &mut sink);
 
         // Convert to owned commands so expectations can safely inspect bytes.
-        for cmd in out {
+        for cmd in sink.out {
             self.pending.push(to_owned(cmd));
         }
     }

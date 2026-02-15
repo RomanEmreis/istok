@@ -1,8 +1,6 @@
 extern crate alloc;
 
-use alloc::vec;
-
-use istok_h3::engine::{EngineEvent, TimerId};
+use istok_h3::engine::{CommandSink, EngineEvent};
 use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
 use istok_transport::{StreamId};
 
@@ -18,7 +16,7 @@ impl H3Engine {
 }
 
 impl istok_h3::engine::Engine for H3Engine {
-    fn on_event<'a>(&mut self, ev: EngineEvent<'a>, out: &mut dyn Extend<istok_h3::engine::EngineCommand<'a>>) {
+    fn on_event<'a>(&mut self, ev: EngineEvent<'a>, out: &mut dyn CommandSink<'a>) {
         use istok_h3::engine::EngineCommand;
         use istok_transport::QuicCommand;
 
@@ -31,11 +29,11 @@ impl istok_h3::engine::Engine for H3Engine {
                 let id = StreamId(2);
                 self.control_stream = Some(id);
 
-                out.extend([EngineCommand::Quic(QuicCommand::OpenUni { id_hint: Some(id) })]);
+                out.push(EngineCommand::Quic(QuicCommand::OpenUni { id_hint: Some(id) }));
 
                 // Write: stream type (0x00) + SETTINGS frame (0x04) + len 0
                 let bytes: &'static [u8] = &[0x00, 0x04, 0x00];
-                out.extend([EngineCommand::Quic(QuicCommand::StreamWrite { id, data: bytes, fin: false })]);
+                out.push(EngineCommand::Quic(QuicCommand::StreamWrite { id, data: bytes, fin: false }));
             }
             _ => {}
         }

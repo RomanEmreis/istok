@@ -1,4 +1,4 @@
-use crate::engine::{Engine, EngineCommand, EngineEvent};
+use crate::engine::{CommandSink, Engine, EngineCommand, EngineEvent};
 use istok_transport::{QuicCommand, StreamId};
 
 /// Minimal H3 engine skeleton.
@@ -20,7 +20,7 @@ impl Default for H3Engine {
 }
 
 impl Engine for H3Engine {
-    fn on_event<'a>(&mut self, ev: EngineEvent<'a>, out: &mut dyn Extend<EngineCommand<'a>>) {
+    fn on_event<'a>(&mut self, ev: EngineEvent<'a>, out: &mut dyn CommandSink<'a>) {
         match ev {
             EngineEvent::Boot => {
                 // Placeholder: open uni control stream and write SETTINGS.
@@ -30,11 +30,11 @@ impl Engine for H3Engine {
                 let id = StreamId(2);
                 self.control_stream = Some(id);
 
-                out.extend([EngineCommand::Quic(QuicCommand::OpenUni { id_hint: Some(id) })]);
+                out.push(EngineCommand::Quic(QuicCommand::OpenUni { id_hint: Some(id) }));
 
                 // Temporary hardcoded bytes; must be replaced by istok-core encoder.
                 let bytes: &'static [u8] = &[0x00, 0x04, 0x00];
-                out.extend([EngineCommand::Quic(QuicCommand::StreamWrite { id, data: bytes, fin: false })]);
+                out.push(EngineCommand::Quic(QuicCommand::StreamWrite { id, data: bytes, fin: false }));
             }
             _ => {}
         }

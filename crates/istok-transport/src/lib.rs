@@ -10,4 +10,4 @@ pub use transport::*;
 pub use timer::*;
 pub use crypto::*;
 pub use quic::*;
-pub use datagram;
+pub use datagram::*;
