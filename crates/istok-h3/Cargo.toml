@@ -4,4 +4,5 @@ version = "0.0.1"
 edition = "2024"
 
 [dependencies]
+istok-core = { path = "../istok-core" }
 istok-transport = { path = "../istok-transport" }

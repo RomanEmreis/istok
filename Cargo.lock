@@ -10,6 +10,7 @@ version = "0.0.1"
 name = "istok-h3"
 version = "0.0.1"
 dependencies = [
+ "istok-core",
  "istok-transport",
 ]
 

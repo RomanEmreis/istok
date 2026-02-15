@@ -1,44 +1,10 @@
 extern crate alloc;
 
-use istok_h3::engine::{CommandSink, EngineEvent};
+use istok_core::codec::{h3_frame, varint};
+use istok_core::h3::consts;
+use istok_h3::H3Engine;
 use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
-use istok_transport::{StreamId};
-
-/// Placeholder engine for now
-struct H3Engine {
-    control_stream: Option<StreamId>,
-}
-
-impl H3Engine {
-    fn new() -> Self {
-        Self { control_stream: None }
-    }
-}
-
-impl istok_h3::engine::Engine for H3Engine {
-    fn on_event<'a>(&mut self, ev: EngineEvent<'a>, out: &mut dyn CommandSink<'a>) {
-        use istok_h3::engine::EngineCommand;
-        use istok_transport::QuicCommand;
-
-        match ev {
-            EngineEvent::Boot => {
-                // Skeleton behavior:
-                // 1) open uni stream
-                // 2) assume chosen StreamId=2 for now OR let runtime feed it back later.
-                // For the scaffold test, we can hardcode a stream id and make mock expect it.
-                let id = StreamId(2);
-                self.control_stream = Some(id);
-
-                out.push(EngineCommand::Quic(QuicCommand::OpenUni { id_hint: Some(id) }));
-
-                // Write: stream type (0x00) + SETTINGS frame (0x04) + len 0
-                let bytes: &'static [u8] = &[0x00, 0x04, 0x00];
-                out.push(EngineCommand::Quic(QuicCommand::StreamWrite { id, data: bytes, fin: false }));
-            }
-            _ => {}
-        }
-    }
-}
+use istok_transport::StreamId;
 
 #[test]
 fn boot_opens_control_and_sends_settings() {
@@ -47,12 +13,24 @@ fn boot_opens_control_and_sends_settings() {
 
     let control_id = StreamId(2);
 
+    let mut prefix = [0u8; 8];
+    let stream_type_len = varint::encode(consts::STREAM_TYPE_CONTROL, &mut prefix)
+        .expect("stream type varint should encode");
+    let header_len = h3_frame::encode_frame_header(
+        h3_frame::FrameHeader {
+            ty: consts::FRAME_TYPE_SETTINGS,
+            len: 0,
+        },
+        &mut prefix[stream_type_len..],
+    )
+    .expect("settings frame header should encode");
+
     h.run_script(&[
         ScriptStep::InBoot,
         ScriptStep::Expect(ExpectCommand::QuicOpenUni),
         ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
             id: control_id,
-            data_prefix: alloc::vec![0x00, 0x04, 0x00],
+            data_prefix: alloc::vec::Vec::from(&prefix[..stream_type_len + header_len]),
             fin: false,
         }),
         ScriptStep::ExpectNone,
