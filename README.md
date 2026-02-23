@@ -16,7 +16,11 @@ Istok is an HTTP/3-first server engine in Rust.
 - `crates/istok-server`: user-facing server API and examples
 - `crates/istok-http`: temporary compatibility with `http` crate types
 
-## Status / Milestones
+## Status
+### pre-alpha / research
+- Implemented: QUIC varint, H3 frame codec, SETTINGS (empty) encoding, deterministic boot test
+
+## Milestones
 See `docs/milestones.md`.
 
 ## Development
