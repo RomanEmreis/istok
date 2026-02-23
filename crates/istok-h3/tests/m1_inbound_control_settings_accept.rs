@@ -39,3 +39,70 @@ fn inbound_control_stream_accepts_empty_settings_without_closing() {
         ScriptStep::ExpectNone,
     ]);
 }
+
+#[test]
+fn inbound_control_stream_accepts_empty_settings_with_extra_bytes() {
+    let engine = H3Engine::new();
+    let mut h = MockHarness::new(engine);
+
+    let peer_uni_id = StreamId(3);
+
+    let mut buf = [0u8; 32];
+    let stream_ty_len =
+        varint::encode(consts::STREAM_TYPE_CONTROL, &mut buf).expect("stream type encodes");
+    let frame_len = h3_frame::encode_frame_header(
+        h3_frame::FrameHeader {
+            ty: consts::FRAME_TYPE_SETTINGS,
+            len: 0,
+        },
+        &mut buf[stream_ty_len..],
+    )
+    .expect("frame header encodes");
+
+    let total = stream_ty_len + frame_len;
+    buf[total] = 0xaa;
+    buf[total + 1] = 0xbb;
+
+    h.run_script(&[
+        ScriptStep::InQuicOpen {
+            id: peer_uni_id,
+            kind: StreamKind::Uni,
+        },
+        ScriptStep::ExpectNone,
+        ScriptStep::InQuicData {
+            id: peer_uni_id,
+            data: alloc::vec::Vec::from(&buf[..total + 2]),
+            fin: false,
+        },
+        ScriptStep::ExpectNone,
+    ]);
+}
+
+#[test]
+fn inbound_pending_stream_type_is_not_overwritten_by_second_uni_open() {
+    let engine = H3Engine::new();
+    let mut h = MockHarness::new(engine);
+
+    let first_uni_id = StreamId(3);
+    let second_uni_id = StreamId(7);
+
+    h.run_script(&[
+        ScriptStep::InQuicOpen {
+            id: first_uni_id,
+            kind: StreamKind::Uni,
+        },
+        ScriptStep::ExpectNone,
+        ScriptStep::InQuicOpen {
+            id: second_uni_id,
+            kind: StreamKind::Uni,
+        },
+        ScriptStep::ExpectNone,
+        // If pending stream id were overwritten, this would try to parse stream type and close.
+        ScriptStep::InQuicData {
+            id: second_uni_id,
+            data: alloc::vec::Vec::from(&[0xff]),
+            fin: false,
+        },
+        ScriptStep::ExpectNone,
+    ]);
+}

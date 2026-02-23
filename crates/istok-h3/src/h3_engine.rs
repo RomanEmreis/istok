@@ -8,6 +8,7 @@ use istok_transport::{QuicCommand, QuicEvent, StreamId, StreamKind};
 pub struct H3Engine {
     control_stream: Option<StreamId>,
     inbound_uni_pending_type: Option<StreamId>,
+    // Reserved for M1.2+ incremental parsing/state once control stream bytes may arrive in chunks.
     inbound_control_stream: Option<StreamId>,
 }
 
@@ -97,7 +98,9 @@ impl Engine for H3Engine {
                 id,
                 kind: StreamKind::Uni,
             }) => {
-                self.inbound_uni_pending_type = Some(id);
+                if self.inbound_uni_pending_type.is_none() {
+                    self.inbound_uni_pending_type = Some(id);
+                }
             }
             EngineEvent::Quic(QuicEvent::StreamReadable { id, data, .. }) => {
                 if self.inbound_uni_pending_type != Some(id) {
@@ -136,8 +139,16 @@ impl Engine for H3Engine {
                     return;
                 }
 
-                let frame_end = stream_ty_len + frame_header_len;
-                if frame_end != data.len() {
+                let payload_len = match usize::try_from(frame_header.len) {
+                    Ok(len) => len,
+                    Err(_) => {
+                        self.close_with(out, consts::H3_FRAME_ERROR);
+                        return;
+                    }
+                };
+
+                let required_len = stream_ty_len + frame_header_len + payload_len;
+                if data.len() < required_len {
                     self.close_with(out, consts::H3_FRAME_ERROR);
                     return;
                 }
