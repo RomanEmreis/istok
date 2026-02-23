@@ -19,13 +19,14 @@ over a mock QUIC transport.
 - [x] deterministic mock harness (script-driven)
 - [x] engine boot opens local control stream + sends SETTINGS (no magic bytes)
 - [x] owned write path supported in mock
+- [x] StreamWriteOwned path integrated through transport + mock
 
 ### M1.1 — Inbound control stream type + SETTINGS (next)
-- [ ] parse peer-initiated uni stream type (varint)
-- [ ] accept peer control stream
-- [ ] parse frames on control stream (at least SETTINGS with len=0)
-- [ ] tests:
-  - [ ] peer control stream sends empty SETTINGS → accepted, no close
+- [x] parse peer-initiated uni stream type (varint)
+- [x] accept peer control stream
+- [x] parse frames on control stream (at least SETTINGS with len=0)
+- [x] tests:
+  - [x] peer control stream sends empty SETTINGS → accepted, no close
 
 ### M1.2 — Minimal buffering / incremental parsing
 - [ ] handle fragmented input across multiple StreamReadable events
