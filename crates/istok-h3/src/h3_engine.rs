@@ -140,6 +140,8 @@ impl Engine for H3Engine {
                                 return;
                             }
 
+                            // M1/M1.2 simplicity: front-drain from Vec. This is O(n);
+                            // a cursor/ring-buffer is a likely M2+ follow-up.
                             self.inbound_uni_pending_buf.drain(0..consumed);
                             self.inbound_uni_state = InboundUniState::NeedFrameHeader;
                         }
