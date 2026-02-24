@@ -145,7 +145,7 @@ impl Engine for H3Engine {
                     self.inbound_request_state = InboundRequestState::NeedFrameHeader;
                 }
             }
-            EngineEvent::Quic(QuicEvent::StreamReadable { id, data, .. }) => {
+            EngineEvent::Quic(QuicEvent::StreamReadable { id, data, fin }) => {
                 if self.inbound_uni_pending_type == Some(id) {
                     self.inbound_uni_pending_buf.extend_from_slice(data);
 
@@ -226,6 +226,12 @@ impl Engine for H3Engine {
                     return;
                 }
 
+                if self.inbound_request_state == InboundRequestState::Complete {
+                    self.inbound_request_stream = None;
+                    self.inbound_request_buf.clear();
+                    return;
+                }
+
                 self.inbound_request_buf.extend_from_slice(data);
 
                 loop {
@@ -268,11 +274,16 @@ impl Engine for H3Engine {
                         }
                         InboundRequestState::NeedPayload { len } => {
                             if self.inbound_request_buf.len() < len {
+                                if fin {
+                                    self.close_with(out, consts::H3_FRAME_ERROR);
+                                }
                                 return;
                             }
 
                             self.inbound_request_buf.drain(0..len);
                             self.inbound_request_state = InboundRequestState::Complete;
+                            self.inbound_request_stream = None;
+                            self.inbound_request_buf.clear();
 
                             let mut frame_header = [0u8; 16];
                             let header_len = match h3_frame::encode_frame_header(
