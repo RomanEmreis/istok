@@ -15,6 +15,7 @@ pub struct H3Engine {
     pending_request_stream: Option<StreamId>,
     inbound_request_stream: Option<StreamId>,
     request_stream_claimed: bool,
+    claimed_request_stream_id: Option<StreamId>,
     pending_request_fin: bool,
     inbound_request_buf: Vec<u8>,
     inbound_request_state: InboundRequestState,
@@ -48,6 +49,7 @@ impl H3Engine {
             pending_request_stream: None,
             inbound_request_stream: None,
             request_stream_claimed: false,
+            claimed_request_stream_id: None,
             pending_request_fin: false,
             inbound_request_buf: Vec::new(),
             inbound_request_state: InboundRequestState::NeedFrameHeader,
@@ -114,6 +116,11 @@ impl H3Engine {
                     }
 
                     self.inbound_request_buf.drain(0..len);
+                    if !self.inbound_request_buf.is_empty() {
+                        self.close_with(out, consts::H3_FRAME_ERROR);
+                        return;
+                    }
+
                     self.inbound_request_state = InboundRequestState::Complete;
                     self.inbound_request_stream = None;
                     self.inbound_request_buf.clear();
@@ -245,6 +252,7 @@ impl Engine for H3Engine {
                 if self.inbound_request_stream.is_none() && self.pending_request_stream.is_none() {
                     self.pending_request_stream = Some(id);
                     self.request_stream_claimed = true;
+                    self.claimed_request_stream_id = Some(id);
                 }
             }
             EngineEvent::Quic(QuicEvent::StreamReadable { id, data, fin }) => {
@@ -334,6 +342,14 @@ impl Engine for H3Engine {
                 if self.pending_request_stream == Some(id) && self.inbound_control_stream.is_none() {
                     self.inbound_request_buf.extend_from_slice(data);
                     self.pending_request_fin |= fin;
+                    return;
+                }
+
+                if self.inbound_request_stream.is_none()
+                    && self.pending_request_stream.is_none()
+                    && self.claimed_request_stream_id == Some(id)
+                {
+                    self.close_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
                     return;
                 }
 

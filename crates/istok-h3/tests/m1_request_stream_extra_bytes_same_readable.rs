@@ -7,7 +7,7 @@ use istok_h3::H3Engine;
 use istok_transport::{StreamId, StreamKind};
 
 #[test]
-fn readable_after_request_completion_closes_connection() {
+fn extra_bytes_after_declared_headers_payload_closes_connection() {
     let engine = H3Engine::new();
     let mut h = MockHarness::new(engine);
 
@@ -27,36 +27,19 @@ fn readable_after_request_completion_closes_connection() {
     .expect("control settings frame encodes");
     let control_total = control_type_len + control_frame_len;
 
-    let mut request_buf = [0u8; 16];
-    let request_payload = [0xaa, 0xbb];
+    let mut request_header = [0u8; 16];
     let request_header_len = h3_frame::encode_frame_header(
         h3_frame::FrameHeader {
             ty: consts::FRAME_TYPE_HEADERS,
-            len: request_payload.len() as u64,
+            len: 2,
         },
-        &mut request_buf,
+        &mut request_header,
     )
-    .expect("request header encodes");
+    .expect("request headers frame header encodes");
 
-    let mut request = alloc::vec::Vec::with_capacity(request_header_len + request_payload.len());
-    request.extend_from_slice(&request_buf[..request_header_len]);
-    request.extend_from_slice(&request_payload);
-
-    let mut response_buf = [0u8; 16];
-    let response_header_len = h3_frame::encode_frame_header(
-        h3_frame::FrameHeader {
-            ty: consts::FRAME_TYPE_HEADERS,
-            len: 1,
-        },
-        &mut response_buf,
-    )
-    .expect("response header encodes");
-
-    let mut response_prefix = alloc::vec::Vec::with_capacity(response_header_len + 1);
-    response_prefix.extend_from_slice(&response_buf[..response_header_len]);
-    response_prefix.push(0x00);
-
-    let extra = alloc::vec![0x11; 64 * 1024];
+    let mut request_data = alloc::vec::Vec::with_capacity(request_header_len + 3);
+    request_data.extend_from_slice(&request_header[..request_header_len]);
+    request_data.extend_from_slice(&[0xaa, 0xbb, 0xcc]);
 
     h.run_script(&[
         ScriptStep::InQuicOpen {
@@ -77,22 +60,11 @@ fn readable_after_request_completion_closes_connection() {
         ScriptStep::ExpectNone,
         ScriptStep::InQuicData {
             id: request_stream_id,
-            data: request,
-            fin: false,
-        },
-        ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
-            id: request_stream_id,
-            data_prefix: response_prefix,
-            fin: false,
-        }),
-        ScriptStep::ExpectNone,
-        ScriptStep::InQuicData {
-            id: request_stream_id,
-            data: extra,
+            data: request_data,
             fin: false,
         },
         ScriptStep::Expect(ExpectCommand::QuicCloseConnection {
-            app_error: consts::H3_GENERAL_PROTOCOL_ERROR,
+            app_error: consts::H3_FRAME_ERROR,
         }),
         ScriptStep::ExpectNone,
     ]);
