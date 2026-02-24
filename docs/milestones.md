@@ -29,21 +29,21 @@ over a mock QUIC transport.
   - [x] peer control stream sends empty SETTINGS → accepted, no close
 
 ### M1.2 — Minimal buffering / incremental parsing
-- [ ] handle fragmented input across multiple StreamReadable events
-- [ ] tests:
-  - [ ] stream type varint split across events
-  - [ ] frame header split across events
-  - [ ] SETTINGS payload split across events (even if len=0, test structure)
+- [x] handle fragmented input across multiple StreamReadable events
+- [x] tests:
+  - [x] stream type varint split across events
+  - [x] frame header split across events
+  - [x] SETTINGS payload split across events (even if len=0, test structure)
 
 ### M1.3 — One request stream happy-path (HEADERS only, no QPACK yet)
 Scope:
-- request stream handling without QPACK (use placeholder header representation)
-- [ ] accept one bidi stream as “request”
-- [ ] receive HEADERS frame (payload treated as opaque bytes for now)
-- [ ] produce a minimal response:
-  - [ ] send HEADERS frame (opaque bytes) and optional DATA frame
-- [ ] tests:
-  - [ ] happy-path: HEADERS in → HEADERS out
+- [x] request stream handling without QPACK (use placeholder header representation)
+- [x] accept one bidi stream as “request”
+- [x] receive HEADERS frame (payload treated as opaque bytes for now)
+- [x] produce a minimal response:
+  - [x] send HEADERS frame (opaque bytes) and optional DATA frame
+- [x] tests:
+  - [x] happy-path: HEADERS in → HEADERS out
 
 ### M1.4 — Error paths
 - [ ] malformed varint / malformed frame header → close with appropriate H3 error
