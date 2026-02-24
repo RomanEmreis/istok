@@ -390,6 +390,18 @@ impl Engine for H3Engine {
                     return;
                 }
 
+                let new_len = match self.inbound_request_buf.len().checked_add(data.len()) {
+                    Some(len) => len,
+                    None => {
+                        self.close_request_with(out, consts::H3_FRAME_ERROR);
+                        return;
+                    }
+                };
+                if new_len > MAX_EARLY_REQUEST_BUFFER {
+                    self.close_request_with(out, consts::H3_FRAME_ERROR);
+                    return;
+                }
+
                 self.inbound_request_buf.extend_from_slice(data);
                 self.parse_request_stream(id, fin, out);
             }
