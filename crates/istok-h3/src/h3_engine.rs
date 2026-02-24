@@ -158,6 +158,8 @@ impl H3Engine {
         }
     }
 
+    // M1.3 terminal teardown for request-path closes: once we decide to close,
+    // prevent any further request buffering/parsing on subsequent events.
     fn close_request_with<'a>(&mut self, out: &mut dyn CommandSink<'a>, app_error: u64) {
         self.close_with(out, app_error);
         self.inbound_request_stream = None;
