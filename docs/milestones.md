@@ -40,8 +40,12 @@ Scope:
 - [x] request stream handling without QPACK (use placeholder header representation)
 - [x] accept one bidi stream as “request”
 - [x] receive HEADERS frame (payload treated as opaque bytes for now)
+- [x] finish response stream (send FIN)
+- [x] tolerate FIN-only readable after completion (no close)
+- [x] enforce max HEADERS payload (16 KiB)
+- [x] cap early buffering before control stream (MAX_EARLY_REQUEST_BUFFER)
 - [x] produce a minimal response:
-  - [x] send HEADERS frame (opaque bytes) and optional DATA frame
+  - [x] send HEADERS frame only (opaque bytes), fin=true
 - [x] tests:
   - [x] happy-path: HEADERS in → HEADERS out
 
