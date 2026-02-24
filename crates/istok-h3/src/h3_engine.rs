@@ -150,7 +150,7 @@ impl H3Engine {
                     out.push(EngineCommand::Quic(QuicCommand::StreamWriteOwned {
                         id,
                         data: response,
-                        fin: false,
+                        fin: true,
                     }));
                     return;
                 }

@@ -79,7 +79,7 @@ fn request_data_buffered_before_control_is_processed_after_settings() {
         ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
             id: request_stream_id,
             data_prefix: resp_prefix,
-            fin: false,
+            fin: true,
         }),
         ScriptStep::ExpectNone,
     ]);

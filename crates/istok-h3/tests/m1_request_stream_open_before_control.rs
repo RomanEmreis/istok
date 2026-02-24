@@ -81,7 +81,7 @@ fn request_stream_opened_before_control_is_promoted_after_settings() {
         ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
             id: request_stream_id,
             data_prefix: response_prefix,
-            fin: false,
+            fin: true,
         }),
         ScriptStep::ExpectNone,
     ]);

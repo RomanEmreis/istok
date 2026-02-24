@@ -83,7 +83,7 @@ fn readable_after_request_completion_closes_connection() {
         ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
             id: request_stream_id,
             data_prefix: response_prefix,
-            fin: false,
+            fin: true,
         }),
         ScriptStep::ExpectNone,
         ScriptStep::InQuicData {

@@ -81,7 +81,7 @@ fn active_request_stream_accepts_headers_and_writes_headers_response() {
         ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
             id: request_stream_id,
             data_prefix: response_prefix,
-            fin: false,
+            fin: true,
         }),
         ScriptStep::ExpectNone,
     ]);
