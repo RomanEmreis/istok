@@ -32,6 +32,7 @@ enum InboundRequestState {
 }
 
 const RESPONSE_HEADERS_PAYLOAD: [u8; 1] = [0x00];
+const MAX_REQUEST_HEADERS_PAYLOAD: usize = 16 * 1024;
 
 impl H3Engine {
     pub fn new() -> Self {
@@ -134,6 +135,10 @@ impl Engine for H3Engine {
                 id,
                 kind: StreamKind::Bidi,
             }) => {
+                if self.inbound_control_stream.is_none() {
+                    return;
+                }
+
                 if self.inbound_request_stream.is_none() {
                     self.inbound_request_stream = Some(id);
                     self.inbound_request_buf.clear();
@@ -250,6 +255,11 @@ impl Engine for H3Engine {
                                     return;
                                 }
                             };
+
+                            if payload_len > MAX_REQUEST_HEADERS_PAYLOAD {
+                                self.close_with(out, consts::H3_FRAME_ERROR);
+                                return;
+                            }
 
                             self.inbound_request_buf.drain(0..consumed);
                             self.inbound_request_state = InboundRequestState::NeedPayload {
