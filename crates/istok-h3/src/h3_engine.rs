@@ -15,6 +15,7 @@ pub struct H3Engine {
     pending_request_stream: Option<StreamId>,
     inbound_request_stream: Option<StreamId>,
     request_stream_claimed: bool,
+    pending_request_fin: bool,
     inbound_request_buf: Vec<u8>,
     inbound_request_state: InboundRequestState,
 }
@@ -47,8 +48,106 @@ impl H3Engine {
             pending_request_stream: None,
             inbound_request_stream: None,
             request_stream_claimed: false,
+            pending_request_fin: false,
             inbound_request_buf: Vec::new(),
             inbound_request_state: InboundRequestState::NeedFrameHeader,
+        }
+    }
+
+    fn parse_request_stream<'a>(&mut self, id: StreamId, fin: bool, out: &mut dyn CommandSink<'a>) {
+        if self.inbound_request_stream != Some(id) {
+            return;
+        }
+
+        if self.inbound_request_state == InboundRequestState::Complete {
+            self.inbound_request_stream = None;
+            self.inbound_request_buf.clear();
+            self.pending_request_fin = false;
+            return;
+        }
+
+        loop {
+            match self.inbound_request_state {
+                InboundRequestState::NeedFrameHeader => {
+                    let (frame_header, consumed) =
+                        match h3_frame::decode_frame_header(&self.inbound_request_buf) {
+                            Ok(parsed) => parsed,
+                            Err(h3_frame::Error::VarInt(varint::VarIntError::BufferTooSmall)) => {
+                                if fin {
+                                    self.close_with(out, consts::H3_FRAME_ERROR);
+                                }
+                                return;
+                            }
+                            Err(_) => {
+                                self.close_with(out, consts::H3_FRAME_ERROR);
+                                return;
+                            }
+                        };
+
+                    if frame_header.ty != consts::FRAME_TYPE_HEADERS {
+                        self.close_with(out, consts::H3_FRAME_UNEXPECTED);
+                        return;
+                    }
+
+                    let payload_len = match usize::try_from(frame_header.len) {
+                        Ok(len) => len,
+                        Err(_) => {
+                            self.close_with(out, consts::H3_FRAME_ERROR);
+                            return;
+                        }
+                    };
+
+                    if payload_len > MAX_REQUEST_HEADERS_PAYLOAD {
+                        self.close_with(out, consts::H3_FRAME_ERROR);
+                        return;
+                    }
+
+                    self.inbound_request_buf.drain(0..consumed);
+                    self.inbound_request_state = InboundRequestState::NeedPayload { len: payload_len };
+                }
+                InboundRequestState::NeedPayload { len } => {
+                    if self.inbound_request_buf.len() < len {
+                        if fin {
+                            self.close_with(out, consts::H3_FRAME_ERROR);
+                        }
+                        return;
+                    }
+
+                    self.inbound_request_buf.drain(0..len);
+                    self.inbound_request_state = InboundRequestState::Complete;
+                    self.inbound_request_stream = None;
+                    self.inbound_request_buf.clear();
+                    self.pending_request_fin = false;
+
+                    let mut frame_header = [0u8; 16];
+                    let header_len = match h3_frame::encode_frame_header(
+                        h3_frame::FrameHeader {
+                            ty: consts::FRAME_TYPE_HEADERS,
+                            len: RESPONSE_HEADERS_PAYLOAD.len() as u64,
+                        },
+                        &mut frame_header,
+                    ) {
+                        Ok(len) => len,
+                        Err(_) => {
+                            self.close_with(out, consts::H3_FRAME_ERROR);
+                            return;
+                        }
+                    };
+
+                    let mut response =
+                        Vec::with_capacity(header_len + RESPONSE_HEADERS_PAYLOAD.len());
+                    response.extend_from_slice(&frame_header[..header_len]);
+                    response.extend_from_slice(&RESPONSE_HEADERS_PAYLOAD);
+
+                    out.push(EngineCommand::Quic(QuicCommand::StreamWriteOwned {
+                        id,
+                        data: response,
+                        fin: false,
+                    }));
+                    return;
+                }
+                InboundRequestState::Complete => return,
+            }
         }
     }
 
@@ -219,10 +318,23 @@ impl Engine for H3Engine {
                                 self.inbound_uni_pending_buf.drain(0..len);
                                 self.inbound_uni_pending_type = None;
                                 self.inbound_control_stream = Some(id);
+
+                                if let Some(req_id) = self.pending_request_stream {
+                                    self.pending_request_stream = None;
+                                    self.inbound_request_stream = Some(req_id);
+                                    self.inbound_request_state = InboundRequestState::NeedFrameHeader;
+                                    self.parse_request_stream(req_id, self.pending_request_fin, out);
+                                }
                                 return;
                             }
                         }
                     }
+                }
+
+                if self.pending_request_stream == Some(id) && self.inbound_control_stream.is_none() {
+                    self.inbound_request_buf.extend_from_slice(data);
+                    self.pending_request_fin |= fin;
+                    return;
                 }
 
                 if self.inbound_request_stream.is_none()
@@ -231,7 +343,6 @@ impl Engine for H3Engine {
                 {
                     self.pending_request_stream = None;
                     self.inbound_request_stream = Some(id);
-                    self.inbound_request_buf.clear();
                     self.inbound_request_state = InboundRequestState::NeedFrameHeader;
                 }
 
@@ -239,101 +350,8 @@ impl Engine for H3Engine {
                     return;
                 }
 
-                if self.inbound_request_state == InboundRequestState::Complete {
-                    self.inbound_request_stream = None;
-                    self.inbound_request_buf.clear();
-                    return;
-                }
-
                 self.inbound_request_buf.extend_from_slice(data);
-
-                loop {
-                    match self.inbound_request_state {
-                        InboundRequestState::NeedFrameHeader => {
-                            let (frame_header, consumed) =
-                                match h3_frame::decode_frame_header(&self.inbound_request_buf) {
-                                    Ok(parsed) => parsed,
-                                    Err(h3_frame::Error::VarInt(varint::VarIntError::BufferTooSmall)) => {
-                                        if fin {
-                                            self.close_with(out, consts::H3_FRAME_ERROR);
-                                        }
-                                        return;
-                                    }
-                                    Err(_) => {
-                                        self.close_with(out, consts::H3_FRAME_ERROR);
-                                        return;
-                                    }
-                                };
-
-                            if frame_header.ty != consts::FRAME_TYPE_HEADERS {
-                                self.close_with(out, consts::H3_FRAME_UNEXPECTED);
-                                return;
-                            }
-
-                            let payload_len = match usize::try_from(frame_header.len) {
-                                Ok(len) => len,
-                                Err(_) => {
-                                    self.close_with(out, consts::H3_FRAME_ERROR);
-                                    return;
-                                }
-                            };
-
-                            if payload_len > MAX_REQUEST_HEADERS_PAYLOAD {
-                                self.close_with(out, consts::H3_FRAME_ERROR);
-                                return;
-                            }
-
-                            self.inbound_request_buf.drain(0..consumed);
-                            self.inbound_request_state = InboundRequestState::NeedPayload {
-                                len: payload_len,
-                            };
-                        }
-                        InboundRequestState::NeedPayload { len } => {
-                            if self.inbound_request_buf.len() < len {
-                                if fin {
-                                    self.close_with(out, consts::H3_FRAME_ERROR);
-                                }
-                                return;
-                            }
-
-                            self.inbound_request_buf.drain(0..len);
-                            self.inbound_request_state = InboundRequestState::Complete;
-                            self.inbound_request_stream = None;
-                            self.inbound_request_buf.clear();
-
-                            let mut frame_header = [0u8; 16];
-                            let header_len = match h3_frame::encode_frame_header(
-                                h3_frame::FrameHeader {
-                                    ty: consts::FRAME_TYPE_HEADERS,
-                                    len: RESPONSE_HEADERS_PAYLOAD.len() as u64,
-                                },
-                                &mut frame_header,
-                            ) {
-                                Ok(len) => len,
-                                Err(_) => {
-                                    self.close_with(out, consts::H3_FRAME_ERROR);
-                                    return;
-                                }
-                            };
-
-                            let mut response = Vec::with_capacity(
-                                header_len + RESPONSE_HEADERS_PAYLOAD.len(),
-                            );
-                            response.extend_from_slice(&frame_header[..header_len]);
-                            response.extend_from_slice(&RESPONSE_HEADERS_PAYLOAD);
-
-                            out.push(EngineCommand::Quic(QuicCommand::StreamWriteOwned {
-                                id,
-                                data: response,
-                                fin: false,
-                            }));
-                            return;
-                        }
-                        InboundRequestState::Complete => {
-                            return;
-                        }
-                    }
-                }
+                self.parse_request_stream(id, fin, out);
             }
             _ => {}
         }
