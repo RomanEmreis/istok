@@ -373,6 +373,10 @@ impl Engine for H3Engine {
                     && self.pending_request_stream.is_none()
                     && self.claimed_request_stream_id == Some(id)
                 {
+                    if data.is_empty() && fin {
+                        return;
+                    }
+
                     self.close_request_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
                     return;
                 }
