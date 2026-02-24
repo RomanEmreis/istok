@@ -12,7 +12,9 @@ pub struct H3Engine {
     inbound_uni_pending_buf: Vec<u8>,
     inbound_uni_state: InboundUniState,
     inbound_control_stream: Option<StreamId>,
+    pending_request_stream: Option<StreamId>,
     inbound_request_stream: Option<StreamId>,
+    request_stream_claimed: bool,
     inbound_request_buf: Vec<u8>,
     inbound_request_state: InboundRequestState,
 }
@@ -42,7 +44,9 @@ impl H3Engine {
             inbound_uni_pending_buf: Vec::new(),
             inbound_uni_state: InboundUniState::NeedType,
             inbound_control_stream: None,
+            pending_request_stream: None,
             inbound_request_stream: None,
+            request_stream_claimed: false,
             inbound_request_buf: Vec::new(),
             inbound_request_state: InboundRequestState::NeedFrameHeader,
         }
@@ -135,14 +139,13 @@ impl Engine for H3Engine {
                 id,
                 kind: StreamKind::Bidi,
             }) => {
-                if self.inbound_control_stream.is_none() {
+                if self.request_stream_claimed {
                     return;
                 }
 
-                if self.inbound_request_stream.is_none() {
-                    self.inbound_request_stream = Some(id);
-                    self.inbound_request_buf.clear();
-                    self.inbound_request_state = InboundRequestState::NeedFrameHeader;
+                if self.inbound_request_stream.is_none() && self.pending_request_stream.is_none() {
+                    self.pending_request_stream = Some(id);
+                    self.request_stream_claimed = true;
                 }
             }
             EngineEvent::Quic(QuicEvent::StreamReadable { id, data, fin }) => {
@@ -222,6 +225,16 @@ impl Engine for H3Engine {
                     }
                 }
 
+                if self.inbound_request_stream.is_none()
+                    && self.inbound_control_stream.is_some()
+                    && self.pending_request_stream == Some(id)
+                {
+                    self.pending_request_stream = None;
+                    self.inbound_request_stream = Some(id);
+                    self.inbound_request_buf.clear();
+                    self.inbound_request_state = InboundRequestState::NeedFrameHeader;
+                }
+
                 if self.inbound_request_stream != Some(id) {
                     return;
                 }
@@ -241,6 +254,9 @@ impl Engine for H3Engine {
                                 match h3_frame::decode_frame_header(&self.inbound_request_buf) {
                                     Ok(parsed) => parsed,
                                     Err(h3_frame::Error::VarInt(varint::VarIntError::BufferTooSmall)) => {
+                                        if fin {
+                                            self.close_with(out, consts::H3_FRAME_ERROR);
+                                        }
                                         return;
                                     }
                                     Err(_) => {
