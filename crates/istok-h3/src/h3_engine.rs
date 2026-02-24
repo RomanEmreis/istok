@@ -76,31 +76,31 @@ impl H3Engine {
                             Ok(parsed) => parsed,
                             Err(h3_frame::Error::VarInt(varint::VarIntError::BufferTooSmall)) => {
                                 if fin {
-                                    self.close_with(out, consts::H3_FRAME_ERROR);
+                                    self.close_request_with(out, consts::H3_FRAME_ERROR);
                                 }
                                 return;
                             }
                             Err(_) => {
-                                self.close_with(out, consts::H3_FRAME_ERROR);
+                                self.close_request_with(out, consts::H3_FRAME_ERROR);
                                 return;
                             }
                         };
 
                     if frame_header.ty != consts::FRAME_TYPE_HEADERS {
-                        self.close_with(out, consts::H3_FRAME_UNEXPECTED);
+                        self.close_request_with(out, consts::H3_FRAME_UNEXPECTED);
                         return;
                     }
 
                     let payload_len = match usize::try_from(frame_header.len) {
                         Ok(len) => len,
                         Err(_) => {
-                            self.close_with(out, consts::H3_FRAME_ERROR);
+                            self.close_request_with(out, consts::H3_FRAME_ERROR);
                             return;
                         }
                     };
 
                     if payload_len > MAX_REQUEST_HEADERS_PAYLOAD {
-                        self.close_with(out, consts::H3_FRAME_ERROR);
+                        self.close_request_with(out, consts::H3_FRAME_ERROR);
                         return;
                     }
 
@@ -110,14 +110,14 @@ impl H3Engine {
                 InboundRequestState::NeedPayload { len } => {
                     if self.inbound_request_buf.len() < len {
                         if fin {
-                            self.close_with(out, consts::H3_FRAME_ERROR);
+                            self.close_request_with(out, consts::H3_FRAME_ERROR);
                         }
                         return;
                     }
 
                     self.inbound_request_buf.drain(0..len);
                     if !self.inbound_request_buf.is_empty() {
-                        self.close_with(out, consts::H3_FRAME_ERROR);
+                        self.close_request_with(out, consts::H3_FRAME_ERROR);
                         return;
                     }
 
@@ -136,7 +136,7 @@ impl H3Engine {
                     ) {
                         Ok(len) => len,
                         Err(_) => {
-                            self.close_with(out, consts::H3_FRAME_ERROR);
+                            self.close_request_with(out, consts::H3_FRAME_ERROR);
                             return;
                         }
                     };
@@ -156,6 +156,15 @@ impl H3Engine {
                 InboundRequestState::Complete => return,
             }
         }
+    }
+
+    fn close_request_with<'a>(&mut self, out: &mut dyn CommandSink<'a>, app_error: u64) {
+        self.close_with(out, app_error);
+        self.inbound_request_stream = None;
+        self.pending_request_stream = None;
+        self.inbound_request_buf.clear();
+        self.pending_request_fin = false;
+        self.inbound_request_state = InboundRequestState::Complete;
     }
 
     fn close_with<'a>(&self, out: &mut dyn CommandSink<'a>, app_error: u64) {
@@ -349,7 +358,7 @@ impl Engine for H3Engine {
                     && self.pending_request_stream.is_none()
                     && self.claimed_request_stream_id == Some(id)
                 {
-                    self.close_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
+                    self.close_request_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
                     return;
                 }
 
