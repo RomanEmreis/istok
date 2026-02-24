@@ -12,6 +12,13 @@ pub struct H3Engine {
     inbound_uni_pending_buf: Vec<u8>,
     inbound_uni_state: InboundUniState,
     inbound_control_stream: Option<StreamId>,
+    pending_request_stream: Option<StreamId>,
+    inbound_request_stream: Option<StreamId>,
+    request_stream_claimed: bool,
+    claimed_request_stream_id: Option<StreamId>,
+    pending_request_fin: bool,
+    inbound_request_buf: Vec<u8>,
+    inbound_request_state: InboundRequestState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +28,17 @@ enum InboundUniState {
     NeedPayload { len: usize },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InboundRequestState {
+    NeedFrameHeader,
+    NeedPayload { len: usize },
+    Complete,
+}
+
+const RESPONSE_HEADERS_PAYLOAD: [u8; 1] = [0x00];
+const MAX_REQUEST_HEADERS_PAYLOAD: usize = 16 * 1024;
+const MAX_EARLY_REQUEST_BUFFER: usize = MAX_REQUEST_HEADERS_PAYLOAD + 16;
+
 impl H3Engine {
     pub fn new() -> Self {
         Self {
@@ -29,7 +47,127 @@ impl H3Engine {
             inbound_uni_pending_buf: Vec::new(),
             inbound_uni_state: InboundUniState::NeedType,
             inbound_control_stream: None,
+            pending_request_stream: None,
+            inbound_request_stream: None,
+            request_stream_claimed: false,
+            claimed_request_stream_id: None,
+            pending_request_fin: false,
+            inbound_request_buf: Vec::new(),
+            inbound_request_state: InboundRequestState::NeedFrameHeader,
         }
+    }
+
+    fn parse_request_stream<'a>(&mut self, id: StreamId, fin: bool, out: &mut dyn CommandSink<'a>) {
+        if self.inbound_request_stream != Some(id) {
+            return;
+        }
+
+        if self.inbound_request_state == InboundRequestState::Complete {
+            self.inbound_request_stream = None;
+            self.inbound_request_buf.clear();
+            self.pending_request_fin = false;
+            return;
+        }
+
+        loop {
+            match self.inbound_request_state {
+                InboundRequestState::NeedFrameHeader => {
+                    let (frame_header, consumed) =
+                        match h3_frame::decode_frame_header(&self.inbound_request_buf) {
+                            Ok(parsed) => parsed,
+                            Err(h3_frame::Error::VarInt(varint::VarIntError::BufferTooSmall)) => {
+                                if fin {
+                                    self.close_request_with(out, consts::H3_FRAME_ERROR);
+                                }
+                                return;
+                            }
+                            Err(_) => {
+                                self.close_request_with(out, consts::H3_FRAME_ERROR);
+                                return;
+                            }
+                        };
+
+                    if frame_header.ty != consts::FRAME_TYPE_HEADERS {
+                        self.close_request_with(out, consts::H3_FRAME_UNEXPECTED);
+                        return;
+                    }
+
+                    let payload_len = match usize::try_from(frame_header.len) {
+                        Ok(len) => len,
+                        Err(_) => {
+                            self.close_request_with(out, consts::H3_FRAME_ERROR);
+                            return;
+                        }
+                    };
+
+                    if payload_len > MAX_REQUEST_HEADERS_PAYLOAD {
+                        self.close_request_with(out, consts::H3_FRAME_ERROR);
+                        return;
+                    }
+
+                    self.inbound_request_buf.drain(0..consumed);
+                    self.inbound_request_state = InboundRequestState::NeedPayload { len: payload_len };
+                }
+                InboundRequestState::NeedPayload { len } => {
+                    if self.inbound_request_buf.len() < len {
+                        if fin {
+                            self.close_request_with(out, consts::H3_FRAME_ERROR);
+                        }
+                        return;
+                    }
+
+                    self.inbound_request_buf.drain(0..len);
+                    if !self.inbound_request_buf.is_empty() {
+                        self.close_request_with(out, consts::H3_FRAME_ERROR);
+                        return;
+                    }
+
+                    self.inbound_request_state = InboundRequestState::Complete;
+                    self.inbound_request_stream = None;
+                    self.inbound_request_buf.clear();
+                    self.pending_request_fin = false;
+
+                    let mut frame_header = [0u8; 16];
+                    let header_len = match h3_frame::encode_frame_header(
+                        h3_frame::FrameHeader {
+                            ty: consts::FRAME_TYPE_HEADERS,
+                            len: RESPONSE_HEADERS_PAYLOAD.len() as u64,
+                        },
+                        &mut frame_header,
+                    ) {
+                        Ok(len) => len,
+                        Err(_) => {
+                            self.close_request_with(out, consts::H3_FRAME_ERROR);
+                            return;
+                        }
+                    };
+
+                    let mut response =
+                        Vec::with_capacity(header_len + RESPONSE_HEADERS_PAYLOAD.len());
+                    response.extend_from_slice(&frame_header[..header_len]);
+                    response.extend_from_slice(&RESPONSE_HEADERS_PAYLOAD);
+
+                    out.push(EngineCommand::Quic(QuicCommand::StreamWriteOwned {
+                        id,
+                        data: response,
+                        fin: true,
+                    }));
+                    return;
+                }
+                InboundRequestState::Complete => return,
+            }
+        }
+    }
+
+    // M1.3 terminal teardown for request-path closes: once we decide to close,
+    // prevent any further request buffering/parsing on subsequent events.
+    fn close_request_with<'a>(&mut self, out: &mut dyn CommandSink<'a>, app_error: u64) {
+        self.close_with(out, app_error);
+        self.inbound_request_stream = None;
+        self.pending_request_stream = None;
+        self.inbound_request_buf.clear();
+        self.pending_request_fin = false;
+        self.inbound_request_state = InboundRequestState::Complete;
     }
 
     fn close_with<'a>(&self, out: &mut dyn CommandSink<'a>, app_error: u64) {
@@ -115,84 +253,161 @@ impl Engine for H3Engine {
                     self.inbound_uni_state = InboundUniState::NeedType;
                 }
             }
-            EngineEvent::Quic(QuicEvent::StreamReadable { id, data, .. }) => {
-                if self.inbound_uni_pending_type != Some(id) {
+            EngineEvent::Quic(QuicEvent::StreamOpened {
+                id,
+                kind: StreamKind::Bidi,
+            }) => {
+                if self.request_stream_claimed {
                     return;
                 }
 
-                self.inbound_uni_pending_buf.extend_from_slice(data);
+                if self.inbound_request_stream.is_none() && self.pending_request_stream.is_none() {
+                    self.pending_request_stream = Some(id);
+                    self.request_stream_claimed = true;
+                    self.claimed_request_stream_id = Some(id);
+                }
+            }
+            EngineEvent::Quic(QuicEvent::StreamReadable { id, data, fin }) => {
+                if self.inbound_uni_pending_type == Some(id) {
+                    self.inbound_uni_pending_buf.extend_from_slice(data);
 
-                loop {
-                    match self.inbound_uni_state {
-                        InboundUniState::NeedType => {
-                            let (stream_ty, consumed) =
-                                match varint::decode(&self.inbound_uni_pending_buf) {
+                    loop {
+                        match self.inbound_uni_state {
+                            InboundUniState::NeedType => {
+                                let (stream_ty, consumed) =
+                                    match varint::decode(&self.inbound_uni_pending_buf) {
+                                        Ok(parsed) => parsed,
+                                        Err(varint::VarIntError::BufferTooSmall) => return,
+                                        Err(_) => {
+                                            self.close_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
+                                            return;
+                                        }
+                                    };
+
+                                if stream_ty != consts::STREAM_TYPE_CONTROL {
+                                    self.close_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
+                                    return;
+                                }
+
+                                // M1/M1.2 simplicity: front-drain from Vec. This is O(n);
+                                // a cursor/ring-buffer is a likely M2+ follow-up.
+                                self.inbound_uni_pending_buf.drain(0..consumed);
+                                self.inbound_uni_state = InboundUniState::NeedFrameHeader;
+                            }
+                            InboundUniState::NeedFrameHeader => {
+                                let (frame_header, consumed) = match h3_frame::decode_frame_header(
+                                    &self.inbound_uni_pending_buf,
+                                ) {
                                     Ok(parsed) => parsed,
-                                    Err(varint::VarIntError::BufferTooSmall) => return,
+                                    Err(h3_frame::Error::VarInt(
+                                        varint::VarIntError::BufferTooSmall,
+                                    )) => return,
                                     Err(_) => {
-                                        self.close_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
+                                        self.close_with(out, consts::H3_FRAME_ERROR);
                                         return;
                                     }
                                 };
 
-                            if stream_ty != consts::STREAM_TYPE_CONTROL {
-                                self.close_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
-                                return;
-                            }
+                                if frame_header.ty != consts::FRAME_TYPE_SETTINGS {
+                                    self.close_with(out, consts::H3_FRAME_UNEXPECTED);
+                                    return;
+                                }
 
-                            // M1/M1.2 simplicity: front-drain from Vec. This is O(n);
-                            // a cursor/ring-buffer is a likely M2+ follow-up.
-                            self.inbound_uni_pending_buf.drain(0..consumed);
-                            self.inbound_uni_state = InboundUniState::NeedFrameHeader;
-                        }
-                        InboundUniState::NeedFrameHeader => {
-                            let (frame_header, consumed) = match h3_frame::decode_frame_header(
-                                &self.inbound_uni_pending_buf,
-                            ) {
-                                Ok(parsed) => parsed,
-                                Err(h3_frame::Error::VarInt(
-                                    varint::VarIntError::BufferTooSmall,
-                                )) => return,
-                                Err(_) => {
+                                let payload_len = match usize::try_from(frame_header.len) {
+                                    Ok(len) => len,
+                                    Err(_) => {
+                                        self.close_with(out, consts::H3_FRAME_ERROR);
+                                        return;
+                                    }
+                                };
+
+                                if payload_len != 0 {
                                     self.close_with(out, consts::H3_FRAME_ERROR);
                                     return;
                                 }
-                            };
 
-                            if frame_header.ty != consts::FRAME_TYPE_SETTINGS {
-                                self.close_with(out, consts::H3_FRAME_UNEXPECTED);
-                                return;
+                                self.inbound_uni_pending_buf.drain(0..consumed);
+                                self.inbound_uni_state =
+                                    InboundUniState::NeedPayload { len: payload_len };
                             }
-
-                            let payload_len = match usize::try_from(frame_header.len) {
-                                Ok(len) => len,
-                                Err(_) => {
-                                    self.close_with(out, consts::H3_FRAME_ERROR);
+                            InboundUniState::NeedPayload { len } => {
+                                if self.inbound_uni_pending_buf.len() < len {
                                     return;
                                 }
-                            };
 
-                            if payload_len != 0 {
-                                self.close_with(out, consts::H3_FRAME_ERROR);
+                                self.inbound_uni_pending_buf.drain(0..len);
+                                self.inbound_uni_pending_type = None;
+                                self.inbound_control_stream = Some(id);
+
+                                if let Some(req_id) = self.pending_request_stream {
+                                    self.pending_request_stream = None;
+                                    self.inbound_request_stream = Some(req_id);
+                                    self.inbound_request_state = InboundRequestState::NeedFrameHeader;
+                                    self.parse_request_stream(req_id, self.pending_request_fin, out);
+                                }
                                 return;
                             }
-
-                            self.inbound_uni_pending_buf.drain(0..consumed);
-                            self.inbound_uni_state =
-                                InboundUniState::NeedPayload { len: payload_len };
-                        }
-                        InboundUniState::NeedPayload { len } => {
-                            if self.inbound_uni_pending_buf.len() < len {
-                                return;
-                            }
-
-                            self.inbound_uni_pending_buf.drain(0..len);
-                            self.inbound_uni_pending_type = None;
-                            self.inbound_control_stream = Some(id);
-                            return;
                         }
                     }
                 }
+
+                if self.pending_request_stream == Some(id) && self.inbound_control_stream.is_none() {
+                    let new_len = match self.inbound_request_buf.len().checked_add(data.len()) {
+                        Some(len) => len,
+                        None => {
+                            self.close_request_with(out, consts::H3_FRAME_ERROR);
+                            return;
+                        }
+                    };
+                    if new_len > MAX_EARLY_REQUEST_BUFFER {
+                        self.close_request_with(out, consts::H3_FRAME_ERROR);
+                        return;
+                    }
+
+                    self.inbound_request_buf.extend_from_slice(data);
+                    self.pending_request_fin |= fin;
+                    return;
+                }
+
+                if self.inbound_request_stream.is_none()
+                    && self.pending_request_stream.is_none()
+                    && self.claimed_request_stream_id == Some(id)
+                {
+                    if data.is_empty() && fin {
+                        return;
+                    }
+
+                    self.close_request_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
+                    return;
+                }
+
+                if self.inbound_request_stream.is_none()
+                    && self.inbound_control_stream.is_some()
+                    && self.pending_request_stream == Some(id)
+                {
+                    self.pending_request_stream = None;
+                    self.inbound_request_stream = Some(id);
+                    self.inbound_request_state = InboundRequestState::NeedFrameHeader;
+                }
+
+                if self.inbound_request_stream != Some(id) {
+                    return;
+                }
+
+                let new_len = match self.inbound_request_buf.len().checked_add(data.len()) {
+                    Some(len) => len,
+                    None => {
+                        self.close_request_with(out, consts::H3_FRAME_ERROR);
+                        return;
+                    }
+                };
+                if new_len > MAX_EARLY_REQUEST_BUFFER {
+                    self.close_request_with(out, consts::H3_FRAME_ERROR);
+                    return;
+                }
+
+                self.inbound_request_buf.extend_from_slice(data);
+                self.parse_request_stream(id, fin, out);
             }
             _ => {}
         }
