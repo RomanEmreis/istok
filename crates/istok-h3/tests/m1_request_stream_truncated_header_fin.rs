@@ -1,9 +1,8 @@
 extern crate alloc;
 
-use istok_core::codec::{h3_frame, varint};
 use istok_core::h3::consts;
-use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
 use istok_h3::H3Engine;
+use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
 use istok_transport::{StreamId, StreamKind};
 
 #[test]
@@ -14,31 +13,14 @@ fn request_headers_header_truncated_with_fin_closes_connection() {
     let control_stream_id = StreamId(3);
     let request_stream_id = StreamId(0);
 
-    let mut control_buf = [0u8; 16];
-    let control_type_len =
-        varint::encode(consts::STREAM_TYPE_CONTROL, &mut control_buf).expect("control type encodes");
-    let control_frame_len = h3_frame::encode_frame_header(
-        h3_frame::FrameHeader {
-            ty: consts::FRAME_TYPE_SETTINGS,
-            len: 0,
-        },
-        &mut control_buf[control_type_len..],
-    )
-    .expect("control settings frame encodes");
-    let control_total = control_type_len + control_frame_len;
+    let control_settings = alloc::vec![
+        consts::STREAM_TYPE_CONTROL as u8,
+        consts::FRAME_TYPE_SETTINGS as u8,
+        0x00,
+    ];
 
-    let mut header_buf = [0u8; 16];
-    let header_len = h3_frame::encode_frame_header(
-        h3_frame::FrameHeader {
-            ty: consts::FRAME_TYPE_HEADERS,
-            len: 64,
-        },
-        &mut header_buf,
-    )
-    .expect("request headers frame header encodes");
-    assert!(header_len >= 2, "header should be multi-byte");
-
-    let truncated_header = alloc::vec::Vec::from(&header_buf[..1]);
+    // First byte uses the 8-byte varint tag, but only one byte is present.
+    let truncated_header = alloc::vec![0b11 << 6];
 
     h.run_script(&[
         ScriptStep::InQuicOpen {
@@ -48,7 +30,7 @@ fn request_headers_header_truncated_with_fin_closes_connection() {
         ScriptStep::ExpectNone,
         ScriptStep::InQuicData {
             id: control_stream_id,
-            data: alloc::vec::Vec::from(&control_buf[..control_total]),
+            data: control_settings,
             fin: false,
         },
         ScriptStep::ExpectNone,

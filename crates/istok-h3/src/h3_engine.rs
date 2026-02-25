@@ -160,6 +160,30 @@ impl H3Engine {
         }
     }
 
+    fn parse_control_stream_after_settings<'a>(
+        &mut self,
+        fin: bool,
+        out: &mut dyn CommandSink<'a>,
+    ) {
+        if self.inbound_uni_pending_buf.is_empty() {
+            return;
+        }
+
+        match h3_frame::decode_frame_header(&self.inbound_uni_pending_buf) {
+            Ok(_) => {
+                self.close_with(out, consts::H3_FRAME_UNEXPECTED);
+            }
+            Err(h3_frame::Error::VarInt(varint::VarIntError::BufferTooSmall)) => {
+                if fin {
+                    self.close_with(out, consts::H3_FRAME_ERROR);
+                }
+            }
+            Err(_) => {
+                self.close_with(out, consts::H3_FRAME_ERROR);
+            }
+        }
+    }
+
     // M1.3 terminal teardown for request-path closes: once we decide to close,
     // prevent any further request buffering/parsing on subsequent events.
     fn close_request_with<'a>(&mut self, out: &mut dyn CommandSink<'a>, app_error: u64) {
@@ -269,6 +293,14 @@ impl Engine for H3Engine {
                 }
             }
             EngineEvent::Quic(QuicEvent::StreamReadable { id, data, fin }) => {
+                if self.inbound_control_stream == Some(id)
+                    && self.inbound_uni_pending_type != Some(id)
+                {
+                    self.inbound_uni_pending_buf.extend_from_slice(data);
+                    self.parse_control_stream_after_settings(fin, out);
+                    return;
+                }
+
                 if self.inbound_uni_pending_type == Some(id) {
                     self.inbound_uni_pending_buf.extend_from_slice(data);
 
@@ -353,8 +385,9 @@ impl Engine for H3Engine {
                                 }
 
                                 self.inbound_uni_pending_buf.drain(0..len);
-                                self.inbound_uni_pending_type = None;
                                 self.inbound_control_stream = Some(id);
+                                self.inbound_uni_pending_type = None;
+                                self.inbound_uni_state = InboundUniState::NeedType;
 
                                 if let Some(req_id) = self.pending_request_stream {
                                     self.pending_request_stream = None;
@@ -367,6 +400,8 @@ impl Engine for H3Engine {
                                         out,
                                     );
                                 }
+
+                                self.parse_control_stream_after_settings(fin, out);
                                 return;
                             }
                         }
