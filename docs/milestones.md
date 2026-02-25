@@ -64,6 +64,20 @@ over a mock QUIC transport.
   - [ ] tolerate FIN-only empty readable on control stream after SETTINGS (no close) (if your transport can surface it)
 - [ ] tests for each case (deterministic MockHarness scripts)
 
+### M1.6 — Response framing semantics (multi-frame, multi-write)
+Scope:
+- [ ] respond with HEADERS + DATA (still opaque bytes, no QPACK yet)
+  - [ ] write HEADERS frame first with fin=false
+  - [ ] write DATA frame second with fin=true (FIN only on last frame)
+- [ ] deterministic tests:
+  - [ ] happy-path: request HEADERS in → response HEADERS out (fin=false) → response DATA out (fin=true)
+  - [ ] response writes are ordered (HEADERS write observed before DATA write)
+  - [ ] tolerate request-side FIN-only empty readable after completion (keep existing behavior)
+
+Notes:
+- Keep payloads minimal and deterministic (e.g., HEADERS payload [0x00], DATA payload [0x01] or empty if you prefer).
+- No trailers, no request body handling yet.
+
 ## M2 — QPACK (minimal)
 - [ ] minimal QPACK decoder/encoder for small header sets
 - [ ] integrate into M1.3 HEADERS handling
