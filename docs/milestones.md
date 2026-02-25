@@ -54,15 +54,15 @@ over a mock QUIC transport.
 - [x] tests for each error path
 
 ### M1.5 — Request/control hardening before QPACK
-- [ ] request stream error paths (mirror control strictness):
-  - [ ] truncated request frame header with fin=true → close with H3_FRAME_ERROR
-  - [ ] truncated request HEADERS payload with fin=true → close with H3_FRAME_ERROR
-  - [ ] unexpected first frame on request stream (non-HEADERS) → close with H3_FRAME_UNEXPECTED
-  - [ ] malformed request frame header (decode error != BufferTooSmall) → close with H3_FRAME_ERROR
-- [ ] control stream post-SETTINGS policy (explicit + tested):
-  - [ ] after SETTINGS accepted, receiving any additional frame on control stream → close with H3_FRAME_UNEXPECTED (until M2+)
-  - [ ] tolerate FIN-only empty readable on control stream after SETTINGS (no close) (if your transport can surface it)
-- [ ] tests for each case (deterministic MockHarness scripts)
+- [x] request stream error paths (mirror control strictness):
+  - [x] truncated request frame header with fin=true → close with H3_FRAME_ERROR
+  - [x] truncated request HEADERS payload with fin=true → close with H3_FRAME_ERROR
+  - [x] unexpected first frame on request stream (non-HEADERS) → close with H3_FRAME_UNEXPECTED
+  - [x] malformed request frame header (decode error != BufferTooSmall) → close with H3_FRAME_ERROR
+- [x] control stream post-SETTINGS policy (explicit + tested):
+  - [x] after SETTINGS accepted, receiving any additional frame on control stream → close with H3_FRAME_UNEXPECTED (until M2+)
+  - [x] tolerate FIN-only empty readable on control stream after SETTINGS (no close) (if your transport can surface it)
+- [x] tests for each case (deterministic MockHarness scripts)
 
 ### M1.6 — Response framing semantics (multi-frame, multi-write)
 Scope:
