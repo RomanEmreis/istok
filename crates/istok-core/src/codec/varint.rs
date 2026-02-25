@@ -97,6 +97,12 @@ pub fn decode(input: &[u8]) -> Result<(u64, usize), VarIntError> {
         return Err(VarIntError::InvalidEncoding);
     }
 
+    // QUIC varints must use the shortest possible encoding length.
+    // Reject non-canonical encodings (e.g. value 0 encoded with the 2-byte tag).
+    if encoded_len(v)? != len {
+        return Err(VarIntError::InvalidEncoding);
+    }
+
     Ok((v, len))
 }
 
@@ -152,7 +158,10 @@ mod tests {
         assert_eq!(encoded_len(1_073_741_823).unwrap(), 4);
         assert_eq!(encoded_len(1_073_741_824).unwrap(), 8);
         assert_eq!(encoded_len(VARINT_MAX).unwrap(), 8);
-        assert_eq!(encoded_len(VARINT_MAX + 1).unwrap_err(), VarIntError::ValueTooLarge);
+        assert_eq!(
+            encoded_len(VARINT_MAX + 1).unwrap_err(),
+            VarIntError::ValueTooLarge
+        );
     }
 
     #[test]
@@ -193,9 +202,22 @@ mod tests {
     }
 
     #[test]
+    fn decode_rejects_non_minimal_encoding() {
+        // value 0 encoded with 2-byte varint tag.
+        let non_minimal = [0b0100_0000, 0x00];
+        assert_eq!(
+            decode(&non_minimal).unwrap_err(),
+            VarIntError::InvalidEncoding
+        );
+    }
+
+    #[test]
     fn encode_buffer_too_small() {
         let mut buf = [0u8; 1];
-        assert_eq!(encode(64, &mut buf).unwrap_err(), VarIntError::BufferTooSmall);
+        assert_eq!(
+            encode(64, &mut buf).unwrap_err(),
+            VarIntError::BufferTooSmall
+        );
     }
 
     #[test]
