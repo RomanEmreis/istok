@@ -97,12 +97,6 @@ pub fn decode(input: &[u8]) -> Result<(u64, usize), VarIntError> {
         return Err(VarIntError::InvalidEncoding);
     }
 
-    // QUIC varints must use the shortest possible encoding length.
-    // Reject non-canonical encodings (e.g. value 0 encoded with the 2-byte tag).
-    if encoded_len(v)? != len {
-        return Err(VarIntError::InvalidEncoding);
-    }
-
     Ok((v, len))
 }
 
@@ -202,13 +196,12 @@ mod tests {
     }
 
     #[test]
-    fn decode_rejects_non_minimal_encoding() {
-        // value 0 encoded with 2-byte varint tag.
+    fn decode_accepts_non_minimal_encoding() {
+        // value 0 encoded with 2-byte varint tag is valid for general QUIC varint fields.
         let non_minimal = [0b0100_0000, 0x00];
-        assert_eq!(
-            decode(&non_minimal).unwrap_err(),
-            VarIntError::InvalidEncoding
-        );
+        let (v, n) = decode(&non_minimal).unwrap();
+        assert_eq!(v, 0);
+        assert_eq!(n, 2);
     }
 
     #[test]

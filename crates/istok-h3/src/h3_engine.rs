@@ -106,7 +106,8 @@ impl H3Engine {
                     }
 
                     self.inbound_request_buf.drain(0..consumed);
-                    self.inbound_request_state = InboundRequestState::NeedPayload { len: payload_len };
+                    self.inbound_request_state =
+                        InboundRequestState::NeedPayload { len: payload_len };
                 }
                 InboundRequestState::NeedPayload { len } => {
                     if self.inbound_request_buf.len() < len {
@@ -277,7 +278,15 @@ impl Engine for H3Engine {
                                 let (stream_ty, consumed) =
                                     match varint::decode(&self.inbound_uni_pending_buf) {
                                         Ok(parsed) => parsed,
-                                        Err(varint::VarIntError::BufferTooSmall) => return,
+                                        Err(varint::VarIntError::BufferTooSmall) => {
+                                            if fin {
+                                                self.close_with(
+                                                    out,
+                                                    consts::H3_GENERAL_PROTOCOL_ERROR,
+                                                );
+                                            }
+                                            return;
+                                        }
                                         Err(_) => {
                                             self.close_with(out, consts::H3_GENERAL_PROTOCOL_ERROR);
                                             return;
@@ -301,7 +310,12 @@ impl Engine for H3Engine {
                                     Ok(parsed) => parsed,
                                     Err(h3_frame::Error::VarInt(
                                         varint::VarIntError::BufferTooSmall,
-                                    )) => return,
+                                    )) => {
+                                        if fin {
+                                            self.close_with(out, consts::H3_FRAME_ERROR);
+                                        }
+                                        return;
+                                    }
                                     Err(_) => {
                                         self.close_with(out, consts::H3_FRAME_ERROR);
                                         return;
@@ -332,6 +346,9 @@ impl Engine for H3Engine {
                             }
                             InboundUniState::NeedPayload { len } => {
                                 if self.inbound_uni_pending_buf.len() < len {
+                                    if fin {
+                                        self.close_with(out, consts::H3_FRAME_ERROR);
+                                    }
                                     return;
                                 }
 
@@ -342,8 +359,13 @@ impl Engine for H3Engine {
                                 if let Some(req_id) = self.pending_request_stream {
                                     self.pending_request_stream = None;
                                     self.inbound_request_stream = Some(req_id);
-                                    self.inbound_request_state = InboundRequestState::NeedFrameHeader;
-                                    self.parse_request_stream(req_id, self.pending_request_fin, out);
+                                    self.inbound_request_state =
+                                        InboundRequestState::NeedFrameHeader;
+                                    self.parse_request_stream(
+                                        req_id,
+                                        self.pending_request_fin,
+                                        out,
+                                    );
                                 }
                                 return;
                             }
@@ -351,7 +373,8 @@ impl Engine for H3Engine {
                     }
                 }
 
-                if self.pending_request_stream == Some(id) && self.inbound_control_stream.is_none() {
+                if self.pending_request_stream == Some(id) && self.inbound_control_stream.is_none()
+                {
                     let new_len = match self.inbound_request_buf.len().checked_add(data.len()) {
                         Some(len) => len,
                         None => {
