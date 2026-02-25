@@ -1,7 +1,6 @@
 # Milestones
 
 ## M0 — Codecs
-Definition of Done:
 - [x] varint codec + tests
 - [x] H3 frame codec + tests
 - [x] SETTINGS payload encoding (M0: empty) + tests
@@ -36,7 +35,6 @@ over a mock QUIC transport.
   - [x] SETTINGS payload split across events (even if len=0, test structure)
 
 ### M1.3 — One request stream happy-path (HEADERS only, no QPACK yet)
-Scope:
 - [x] request stream handling without QPACK (use placeholder header representation)
 - [x] accept one bidi stream as “request”
 - [x] receive HEADERS frame (payload treated as opaque bytes for now)
@@ -50,10 +48,21 @@ Scope:
   - [x] happy-path: HEADERS in → HEADERS out
 
 ### M1.4 — Error paths
-- [ ] malformed varint / malformed frame header → close with appropriate H3 error
-- [ ] unexpected stream type on uni stream → close
-- [ ] unexpected first frame on control stream (non-SETTINGS) → close
-- [ ] tests for each error path
+- [x] malformed varint / malformed frame header → close with appropriate H3 error
+- [x] unexpected stream type on uni stream → close
+- [x] unexpected first frame on control stream (non-SETTINGS) → close
+- [x] tests for each error path
+
+### M1.5 — Request/control hardening before QPACK
+- [ ] request stream error paths (mirror control strictness):
+  - [ ] truncated request frame header with fin=true → close with H3_FRAME_ERROR
+  - [ ] truncated request HEADERS payload with fin=true → close with H3_FRAME_ERROR
+  - [ ] unexpected first frame on request stream (non-HEADERS) → close with H3_FRAME_UNEXPECTED
+  - [ ] malformed request frame header (decode error != BufferTooSmall) → close with H3_FRAME_ERROR
+- [ ] control stream post-SETTINGS policy (explicit + tested):
+  - [ ] after SETTINGS accepted, receiving any additional frame on control stream → close with H3_FRAME_UNEXPECTED (until M2+)
+  - [ ] tolerate FIN-only empty readable on control stream after SETTINGS (no close) (if your transport can surface it)
+- [ ] tests for each case (deterministic MockHarness scripts)
 
 ## M2 — QPACK (minimal)
 - [ ] minimal QPACK decoder/encoder for small header sets
@@ -61,18 +70,15 @@ Scope:
 - [ ] tests for small header sets
 
 ## M3 — Tokio adapter + hello server
-DoD:
 - [ ] UDP transport + timer integration
 - [ ] example: `h3_hello` serves a static response
 - [ ] basic logging/trace hooks (optional)
 
 ## M4 — Interop
-DoD:
 - [ ] curl --http3 can fetch /hello
 - [ ] document supported subset and known gaps
 
 ## M5 — Perf & memory
-DoD:
 - [ ] backpressure strategy
 - [ ] memory caps / bounded buffers
 - [ ] profiling checklist + baseline numbers
