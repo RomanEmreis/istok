@@ -152,7 +152,10 @@ mod tests {
         assert_eq!(encoded_len(1_073_741_823).unwrap(), 4);
         assert_eq!(encoded_len(1_073_741_824).unwrap(), 8);
         assert_eq!(encoded_len(VARINT_MAX).unwrap(), 8);
-        assert_eq!(encoded_len(VARINT_MAX + 1).unwrap_err(), VarIntError::ValueTooLarge);
+        assert_eq!(
+            encoded_len(VARINT_MAX + 1).unwrap_err(),
+            VarIntError::ValueTooLarge
+        );
     }
 
     #[test]
@@ -193,9 +196,21 @@ mod tests {
     }
 
     #[test]
+    fn decode_accepts_non_minimal_encoding() {
+        // value 0 encoded with 2-byte varint tag is valid for general QUIC varint fields.
+        let non_minimal = [0b0100_0000, 0x00];
+        let (v, n) = decode(&non_minimal).unwrap();
+        assert_eq!(v, 0);
+        assert_eq!(n, 2);
+    }
+
+    #[test]
     fn encode_buffer_too_small() {
         let mut buf = [0u8; 1];
-        assert_eq!(encode(64, &mut buf).unwrap_err(), VarIntError::BufferTooSmall);
+        assert_eq!(
+            encode(64, &mut buf).unwrap_err(),
+            VarIntError::BufferTooSmall
+        );
     }
 
     #[test]
