@@ -26,6 +26,7 @@ enum InboundUniState {
     NeedType,
     NeedFrameHeader,
     NeedPayload { len: usize },
+    Done,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -353,8 +354,8 @@ impl Engine for H3Engine {
                                 }
 
                                 self.inbound_uni_pending_buf.drain(0..len);
-                                self.inbound_uni_pending_type = None;
                                 self.inbound_control_stream = Some(id);
+                                self.inbound_uni_state = InboundUniState::Done;
 
                                 if let Some(req_id) = self.pending_request_stream {
                                     self.pending_request_stream = None;
@@ -366,6 +367,27 @@ impl Engine for H3Engine {
                                         self.pending_request_fin,
                                         out,
                                     );
+                                }
+                            }
+                            InboundUniState::Done => {
+                                if self.inbound_uni_pending_buf.is_empty() {
+                                    return;
+                                }
+
+                                match h3_frame::decode_frame_header(&self.inbound_uni_pending_buf) {
+                                    Ok(_) => {
+                                        self.close_with(out, consts::H3_FRAME_UNEXPECTED);
+                                    }
+                                    Err(h3_frame::Error::VarInt(
+                                        varint::VarIntError::BufferTooSmall,
+                                    )) => {
+                                        if fin {
+                                            self.close_with(out, consts::H3_FRAME_ERROR);
+                                        }
+                                    }
+                                    Err(_) => {
+                                        self.close_with(out, consts::H3_FRAME_ERROR);
+                                    }
                                 }
                                 return;
                             }
