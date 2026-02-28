@@ -12,6 +12,16 @@ role: implementation
 - **Test authoring**: add `MockHarness`-based tests matching the established M1.x pattern
 - **Mechanical changes**: enum variants, codec wiring, frame serialization
 
+## Reading the task
+
+Your task is in `.agents/TASK.md`. Before writing any code:
+1. Read `TASK.md` fully — instructions, acceptance criteria, constraints, skills
+2. Read each skill listed under "Skills to apply"
+3. Read `CLAUDE.md` for hard rules
+
+As you complete each acceptance criterion, check it off in `TASK.md`.
+When all criteria are met, set `**Status:** ready_for_review` in `TASK.md`.
+
 ## What Codex must always do
 
 - Read and apply all skills in `.agents/skills/` before writing any code

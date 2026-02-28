@@ -28,10 +28,33 @@ Delegate to Codex when the task is:
 - A mechanical change (renaming, adding an enum variant, wiring a new codec)
 - A test addition following an established pattern
 
-Provide Codex with:
-1. The specific milestone task or RFC section
-2. Acceptance criteria (what tests must pass, what the output frame bytes must be)
-3. Any constraints (crate boundaries, error codes to use)
+To hand off, write `.agents/TASK.md` using this structure:
+
+```markdown
+# Task — <Milestone>: <short title>
+
+**Status:** pending
+
+## Instructions
+<concrete what-to-do, no ambiguity>
+
+## Files to touch
+- `crates/...`
+
+## Acceptance criteria
+- [ ] <specific test or observable outcome>
+- [ ] Clippy clean (`cargo clippy --all-targets --all-features --locked -- -D warnings`)
+- [ ] All tests pass (`cargo test --workspace --locked`)
+
+## Constraints
+- <what not to touch, which error codes to use, etc.>
+
+## Skills to apply
+- rust_style, protocol_testing  ← list applicable skills from .agents/skills/
+```
+
+Tell the user: "TASK.md is ready — pass it to Codex."
+After Codex finishes and the user asks for review, read the diff and TASK.md together.
 
 ## What Claude Code must not do
 

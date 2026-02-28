@@ -35,8 +35,24 @@ skills/
   milestone_playbook/ — How to scope, implement, and close out a milestone
 ```
 
+## Task handoff workflow
+
+Work is handed from Claude Code to Codex via `.agents/TASK.md` (gitignored, local only).
+
+```
+Claude Code writes TASK.md
+  → user runs Codex: "read .agents/TASK.md and implement it"
+    → Codex implements, checks off acceptance criteria, sets status to ready_for_review
+      → user reviews code
+        → user asks Claude Code to review
+          → Claude Code approves or writes a new TASK.md with follow-up
+```
+
+`TASK.md` is overwritten for each new task. History lives in git commits, not the file.
+
 ## Reading order for agents
 
 1. Read your own role file in `roles/`
 2. Read all applicable skills in `skills/`
 3. Cross-check against `CLAUDE.md` in the repo root (authoritative on hard rules)
+4. **Codex only:** read `.agents/TASK.md` for the current task
