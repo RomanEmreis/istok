@@ -43,19 +43,35 @@ fn request_stream_opened_before_control_is_promoted_after_settings() {
     request_data.extend_from_slice(&request_header_buf[..request_header_len]);
     request_data.extend_from_slice(&request_payload);
 
-    let mut response_header = [0u8; 16];
-    let response_header_len = h3_frame::encode_frame_header(
+    let mut response_headers_header = [0u8; 16];
+    let response_headers_header_len = h3_frame::encode_frame_header(
         h3_frame::FrameHeader {
             ty: consts::FRAME_TYPE_HEADERS,
             len: 1,
         },
-        &mut response_header,
+        &mut response_headers_header,
     )
     .expect("response frame header encodes");
 
-    let mut response_prefix = alloc::vec::Vec::with_capacity(response_header_len + 1);
-    response_prefix.extend_from_slice(&response_header[..response_header_len]);
-    response_prefix.push(0x00);
+    let mut response_headers_prefix =
+        alloc::vec::Vec::with_capacity(response_headers_header_len + 1);
+    response_headers_prefix
+        .extend_from_slice(&response_headers_header[..response_headers_header_len]);
+    response_headers_prefix.push(0x00);
+
+    let mut response_data_header = [0u8; 16];
+    let response_data_header_len = h3_frame::encode_frame_header(
+        h3_frame::FrameHeader {
+            ty: consts::FRAME_TYPE_DATA,
+            len: 1,
+        },
+        &mut response_data_header,
+    )
+    .expect("response data frame header encodes");
+
+    let mut response_data_prefix = alloc::vec::Vec::with_capacity(response_data_header_len + 1);
+    response_data_prefix.extend_from_slice(&response_data_header[..response_data_header_len]);
+    response_data_prefix.push(0x01);
 
     h.run_script(&[
         ScriptStep::InQuicOpen {
@@ -81,7 +97,12 @@ fn request_stream_opened_before_control_is_promoted_after_settings() {
         },
         ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
             id: request_stream_id,
-            data_prefix: response_prefix,
+            data_prefix: response_headers_prefix,
+            fin: false,
+        }),
+        ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
+            id: request_stream_id,
+            data_prefix: response_data_prefix,
             fin: true,
         }),
         ScriptStep::ExpectNone,

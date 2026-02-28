@@ -36,6 +36,7 @@ enum InboundRequestState {
 }
 
 const RESPONSE_HEADERS_PAYLOAD: [u8; 1] = [0x00];
+const RESPONSE_DATA_PAYLOAD: [u8; 1] = [0x01];
 const MAX_REQUEST_HEADERS_PAYLOAD: usize = 16 * 1024;
 const MAX_EARLY_REQUEST_BUFFER: usize = MAX_REQUEST_HEADERS_PAYLOAD + 16;
 
@@ -143,14 +144,39 @@ impl H3Engine {
                         }
                     };
 
-                    let mut response =
+                    let mut response_headers =
                         Vec::with_capacity(header_len + RESPONSE_HEADERS_PAYLOAD.len());
-                    response.extend_from_slice(&frame_header[..header_len]);
-                    response.extend_from_slice(&RESPONSE_HEADERS_PAYLOAD);
+                    response_headers.extend_from_slice(&frame_header[..header_len]);
+                    response_headers.extend_from_slice(&RESPONSE_HEADERS_PAYLOAD);
 
                     out.push(EngineCommand::Quic(QuicCommand::StreamWriteOwned {
                         id,
-                        data: response,
+                        data: response_headers,
+                        fin: false,
+                    }));
+
+                    let data_header_len = match h3_frame::encode_frame_header(
+                        h3_frame::FrameHeader {
+                            ty: consts::FRAME_TYPE_DATA,
+                            len: RESPONSE_DATA_PAYLOAD.len() as u64,
+                        },
+                        &mut frame_header,
+                    ) {
+                        Ok(len) => len,
+                        Err(_) => {
+                            self.close_request_with(out, consts::H3_FRAME_ERROR);
+                            return;
+                        }
+                    };
+
+                    let mut response_data =
+                        Vec::with_capacity(data_header_len + RESPONSE_DATA_PAYLOAD.len());
+                    response_data.extend_from_slice(&frame_header[..data_header_len]);
+                    response_data.extend_from_slice(&RESPONSE_DATA_PAYLOAD);
+
+                    out.push(EngineCommand::Quic(QuicCommand::StreamWriteOwned {
+                        id,
+                        data: response_data,
                         fin: true,
                     }));
                     return;

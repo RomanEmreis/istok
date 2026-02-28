@@ -190,7 +190,7 @@ post-SETTINGS control stream policy.
 
 ### M1.6 — Response framing semantics (multi-frame, multi-write)
 
-**Status:** active
+**Status:** done
 
 #### Scope
 
@@ -206,15 +206,15 @@ post-SETTINGS control stream policy.
 
 #### Acceptance tests
 
-- [ ] happy-path: request HEADERS in → response HEADERS out (fin=false) → response DATA out (fin=true)
-- [ ] response writes are ordered (HEADERS write observed before DATA write)
-- [ ] tolerate request-side FIN-only empty readable after completion (keep existing behavior)
+- [x] happy-path: request HEADERS in → response HEADERS out (fin=false) → response DATA out (fin=true)
+- [x] response writes are ordered (HEADERS write observed before DATA write)
+- [x] tolerate request-side FIN-only empty readable after completion (keep existing behavior)
 
 #### DoD checklist
 
-- [ ] All acceptance tests green
-- [ ] Clippy clean
-- [ ] Milestones.md updated
+- [x] All acceptance tests green
+- [x] Clippy clean
+- [x] Milestones.md updated
 
 #### no_std / min-deps notes
 
