@@ -1,42 +1,123 @@
 # Milestones
 
+---
+
 ## M0 — Codecs
+
+**Status:** done
+
+### Scope
+
+Varint and H3 frame codecs with tests. QPACK excluded (see M2).
+
+### Acceptance tests
+
 - [x] varint codec + tests
 - [x] H3 frame codec + tests
 - [x] SETTINGS payload encoding (M0: empty) + tests
 - [ ] fuzz target(s) for frame/varint parsing (optional in v0 CI)
 
-Notes:
+### DoD checklist
+
+- [x] All acceptance tests green
+- [x] Clippy clean
+- [x] Milestones.md updated
+
+### no_std / min-deps notes
+
 - QPACK moved out of M0 (see M2).
 
-## M1 — H3 state machine over mock transport
-Goal:
-A deterministic, test-driven H3 engine that can complete a minimal HTTP request/response flow
-over a mock QUIC transport.
+---
 
-### M1.0 — Harness + bootstrap (done)
+## M1 — H3 state machine over mock transport
+
+**Goal:** A deterministic, test-driven H3 engine that can complete a minimal HTTP
+request/response flow over a mock QUIC transport.
+
+---
+
+### M1.0 — Harness + bootstrap
+
+**Status:** done
+
+#### Scope
+
+Deterministic mock harness, engine boot, control stream, owned write path.
+
+#### Acceptance tests
+
 - [x] deterministic mock harness (script-driven)
 - [x] engine boot opens local control stream + sends SETTINGS (no magic bytes)
 - [x] owned write path supported in mock
 - [x] StreamWriteOwned path integrated through transport + mock
 
-### M1.1 — Inbound control stream type + SETTINGS (next)
+#### DoD checklist
+
+- [x] All acceptance tests green
+- [x] Clippy clean
+- [x] Milestones.md updated
+
+---
+
+### M1.1 — Inbound control stream type + SETTINGS
+
+**Status:** done
+
+#### Scope
+
+Parse and accept peer-initiated control stream; parse SETTINGS frame.
+
+#### Acceptance tests
+
 - [x] parse peer-initiated uni stream type (varint)
 - [x] accept peer control stream
 - [x] parse frames on control stream (at least SETTINGS with len=0)
-- [x] tests:
-  - [x] peer control stream sends empty SETTINGS → accepted, no close
+- [x] peer control stream sends empty SETTINGS → accepted, no close
+
+#### DoD checklist
+
+- [x] All acceptance tests green
+- [x] Clippy clean
+- [x] Milestones.md updated
+
+---
 
 ### M1.2 — Minimal buffering / incremental parsing
+
+**Status:** done
+
+#### Scope
+
+Handle fragmented input across multiple StreamReadable events.
+
+#### Acceptance tests
+
 - [x] handle fragmented input across multiple StreamReadable events
-- [x] tests:
-  - [x] stream type varint split across events
-  - [x] frame header split across events
-  - [x] SETTINGS payload split across events (even if len=0, test structure)
+- [x] stream type varint split across events
+- [x] frame header split across events
+- [x] SETTINGS payload split across events (even if len=0, test structure)
+
+#### DoD checklist
+
+- [x] All acceptance tests green
+- [x] Clippy clean
+- [x] Milestones.md updated
+
+---
 
 ### M1.3 — One request stream happy-path (HEADERS only, no QPACK yet)
+
+**Status:** done
+
+#### Scope
+
+Accept one bidi stream as request, receive HEADERS, send minimal response HEADERS
+with FIN. No QPACK.
+
+#### Acceptance tests
+
 - [x] request stream handling without QPACK (use placeholder header representation)
-- [x] accept one bidi stream as “request”
+- [x] accept one bidi stream as "request"
 - [x] receive HEADERS frame (payload treated as opaque bytes for now)
 - [x] finish response stream (send FIN)
 - [x] tolerate FIN-only readable after completion (no close)
@@ -44,16 +125,51 @@ over a mock QUIC transport.
 - [x] cap early buffering before control stream (MAX_EARLY_REQUEST_BUFFER)
 - [x] produce a minimal response:
   - [x] send HEADERS frame only (opaque bytes), fin=true
-- [x] tests:
-  - [x] happy-path: HEADERS in → HEADERS out
+- [x] happy-path: HEADERS in → HEADERS out
+
+#### DoD checklist
+
+- [x] All acceptance tests green
+- [x] Clippy clean
+- [x] Milestones.md updated
+
+---
 
 ### M1.4 — Error paths
+
+**Status:** done
+
+#### Scope
+
+Protocol error handling for malformed frames, unexpected stream types, and control
+stream violations.
+
+#### Acceptance tests
+
 - [x] malformed varint / malformed frame header → close with appropriate H3 error
 - [x] unexpected stream type on uni stream → close
 - [x] unexpected first frame on control stream (non-SETTINGS) → close
 - [x] tests for each error path
 
+#### DoD checklist
+
+- [x] All acceptance tests green
+- [x] Clippy clean
+- [x] Milestones.md updated
+
+---
+
 ### M1.5 — Request/control hardening before QPACK
+
+**Status:** done
+
+#### Scope
+
+Strict request stream error paths mirroring control stream strictness;
+post-SETTINGS control stream policy.
+
+#### Acceptance tests
+
 - [x] request stream error paths (mirror control strictness):
   - [x] truncated request frame header with fin=true → close with H3_FRAME_ERROR
   - [x] truncated request HEADERS payload with fin=true → close with H3_FRAME_ERROR
@@ -64,35 +180,82 @@ over a mock QUIC transport.
   - [x] tolerate FIN-only empty readable on control stream after SETTINGS (no close) (if your transport can surface it)
 - [x] tests for each case (deterministic MockHarness scripts)
 
-### M1.6 — Response framing semantics (multi-frame, multi-write)
-Scope:
-- [ ] respond with HEADERS + DATA (still opaque bytes, no QPACK yet)
-  - [ ] write HEADERS frame first with fin=false
-  - [ ] write DATA frame second with fin=true (FIN only on last frame)
-- [ ] deterministic tests:
-  - [ ] happy-path: request HEADERS in → response HEADERS out (fin=false) → response DATA out (fin=true)
-  - [ ] response writes are ordered (HEADERS write observed before DATA write)
-  - [ ] tolerate request-side FIN-only empty readable after completion (keep existing behavior)
+#### DoD checklist
 
-Notes:
-- Keep payloads minimal and deterministic (e.g., HEADERS payload [0x00], DATA payload [0x01] or empty if you prefer).
-- No trailers, no request body handling yet.
+- [x] All acceptance tests green
+- [x] Clippy clean
+- [x] Milestones.md updated
+
+---
+
+### M1.6 — Response framing semantics (multi-frame, multi-write)
+
+**Status:** active
+
+#### Scope
+
+**Included:**
+- Respond with HEADERS + DATA (still opaque bytes, no QPACK yet)
+- HEADERS frame written with fin=false
+- DATA frame written with fin=true (FIN only on last frame)
+
+**Excluded:**
+- Trailers
+- Request body handling
+- QPACK encoding
+
+#### Acceptance tests
+
+- [ ] happy-path: request HEADERS in → response HEADERS out (fin=false) → response DATA out (fin=true)
+- [ ] response writes are ordered (HEADERS write observed before DATA write)
+- [ ] tolerate request-side FIN-only empty readable after completion (keep existing behavior)
+
+#### DoD checklist
+
+- [ ] All acceptance tests green
+- [ ] Clippy clean
+- [ ] Milestones.md updated
+
+#### no_std / min-deps notes
+
+Keep payloads minimal and deterministic (e.g., HEADERS payload `[0x00]`, DATA payload
+`[0x01]` or empty if you prefer). No trailers, no request body handling yet.
+
+---
 
 ## M2 — QPACK (minimal)
+
+### Scope
+
 - [ ] minimal QPACK decoder/encoder for small header sets
 - [ ] integrate into M1.3 HEADERS handling
 - [ ] tests for small header sets
 
+---
+
 ## M3 — Tokio adapter + hello server
+
+### Scope
+
 - [ ] UDP transport + timer integration
 - [ ] example: `h3_hello` serves a static response
 - [ ] basic logging/trace hooks (optional)
 
+---
+
 ## M4 — Interop
+
+### Scope
+
 - [ ] curl --http3 can fetch /hello
 - [ ] document supported subset and known gaps
 
+---
+
 ## M5 — Perf & memory
+
+### Scope
+
 - [ ] backpressure strategy
 - [ ] memory caps / bounded buffers
 - [ ] profiling checklist + baseline numbers
