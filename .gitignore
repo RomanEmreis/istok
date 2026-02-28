@@ -20,5 +20,10 @@ target
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
+# Fuzz corpus and crash artifacts — local only
+crates/istok-core/fuzz/corpus/
+crates/istok-core/fuzz/artifacts/
+crates/istok-core/fuzz/coverage/
+
 # Local agent task handoff — never committed
 .agents/TASK.md
