@@ -1,5 +1,6 @@
 ---
 name: Milestone Playbook
+description: How to scope, implement, and close milestones — vertical slices, DoD checklists, scaffold rules, and sequencing constraints.
 applies_to: [claude, codex]
 triggers: [starting a milestone, scoping a task, closing a milestone, writing a DoD]
 ---

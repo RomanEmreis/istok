@@ -1,5 +1,6 @@
 ---
 name: Protocol Testing
+description: How to write deterministic, harness-based H3 engine tests using MockHarness — no real sockets, no timers, script-driven and byte-exact.
 applies_to: [claude, codex]
 triggers: [new H3 behavior, new frame type, engine state change, any test addition]
 ---

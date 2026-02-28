@@ -1,5 +1,6 @@
 ---
 name: no_std Rules
+description: Compatibility rules for keeping istok-core and istok-transport free of std — allowed crates, feature gates, and forbidden patterns.
 applies_to: [claude, codex]
 triggers: [any change to istok-core, istok-transport, adding a dependency, new Cargo.toml]
 ---

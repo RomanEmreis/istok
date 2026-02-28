@@ -1,5 +1,6 @@
 ---
 name: Rust Style
+description: Coding conventions for all Istok crates — error handling, panic-free library code, feature gates, and style rules.
 applies_to: [claude, codex]
 triggers: [any code edit, new module, new crate, PR review]
 ---
