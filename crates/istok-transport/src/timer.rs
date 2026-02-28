@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use core::time::Duration;
 
 /// Monotonic time point. Unit is opaque; only differences are meaningful.

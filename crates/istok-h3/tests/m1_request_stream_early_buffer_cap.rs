@@ -1,8 +1,8 @@
 extern crate alloc;
 
 use istok_core::h3::consts;
-use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
 use istok_h3::H3Engine;
+use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
 use istok_transport::{StreamId, StreamKind};
 
 #[test]

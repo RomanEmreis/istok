@@ -2,8 +2,8 @@ extern crate alloc;
 
 use istok_core::codec::{h3_frame, varint};
 use istok_core::h3::consts;
-use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
 use istok_h3::H3Engine;
+use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
 use istok_transport::{StreamId, StreamKind};
 
 #[test]
@@ -15,8 +15,8 @@ fn request_stream_opened_before_control_is_promoted_after_settings() {
     let control_stream_id = StreamId(3);
 
     let mut control_buf = [0u8; 16];
-    let control_type_len =
-        varint::encode(consts::STREAM_TYPE_CONTROL, &mut control_buf).expect("control type encodes");
+    let control_type_len = varint::encode(consts::STREAM_TYPE_CONTROL, &mut control_buf)
+        .expect("control type encodes");
     let control_frame_len = h3_frame::encode_frame_header(
         h3_frame::FrameHeader {
             ty: consts::FRAME_TYPE_SETTINGS,
@@ -38,23 +38,40 @@ fn request_stream_opened_before_control_is_promoted_after_settings() {
     )
     .expect("request headers frame encodes");
 
-    let mut request_data = alloc::vec::Vec::with_capacity(request_header_len + request_payload.len());
+    let mut request_data =
+        alloc::vec::Vec::with_capacity(request_header_len + request_payload.len());
     request_data.extend_from_slice(&request_header_buf[..request_header_len]);
     request_data.extend_from_slice(&request_payload);
 
-    let mut response_header = [0u8; 16];
-    let response_header_len = h3_frame::encode_frame_header(
+    let mut response_headers_header = [0u8; 16];
+    let response_headers_header_len = h3_frame::encode_frame_header(
         h3_frame::FrameHeader {
             ty: consts::FRAME_TYPE_HEADERS,
             len: 1,
         },
-        &mut response_header,
+        &mut response_headers_header,
     )
     .expect("response frame header encodes");
 
-    let mut response_prefix = alloc::vec::Vec::with_capacity(response_header_len + 1);
-    response_prefix.extend_from_slice(&response_header[..response_header_len]);
-    response_prefix.push(0x00);
+    let mut response_headers_prefix =
+        alloc::vec::Vec::with_capacity(response_headers_header_len + 1);
+    response_headers_prefix
+        .extend_from_slice(&response_headers_header[..response_headers_header_len]);
+    response_headers_prefix.push(0x00);
+
+    let mut response_data_header = [0u8; 16];
+    let response_data_header_len = h3_frame::encode_frame_header(
+        h3_frame::FrameHeader {
+            ty: consts::FRAME_TYPE_DATA,
+            len: 1,
+        },
+        &mut response_data_header,
+    )
+    .expect("response data frame header encodes");
+
+    let mut response_data_prefix = alloc::vec::Vec::with_capacity(response_data_header_len + 1);
+    response_data_prefix.extend_from_slice(&response_data_header[..response_data_header_len]);
+    response_data_prefix.push(0x01);
 
     h.run_script(&[
         ScriptStep::InQuicOpen {
@@ -80,7 +97,12 @@ fn request_stream_opened_before_control_is_promoted_after_settings() {
         },
         ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
             id: request_stream_id,
-            data_prefix: response_prefix,
+            data_prefix: response_headers_prefix,
+            fin: false,
+        }),
+        ScriptStep::Expect(ExpectCommand::QuicStreamWrite {
+            id: request_stream_id,
+            data_prefix: response_data_prefix,
             fin: true,
         }),
         ScriptStep::ExpectNone,

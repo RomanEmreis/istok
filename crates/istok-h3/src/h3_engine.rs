@@ -23,9 +23,9 @@ pub struct H3Engine {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InboundUniState {
-    NeedType,
-    NeedFrameHeader,
-    NeedPayload { len: usize },
+    Type,
+    FrameHeader,
+    Payload { len: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +36,7 @@ enum InboundRequestState {
 }
 
 const RESPONSE_HEADERS_PAYLOAD: [u8; 1] = [0x00];
+const RESPONSE_DATA_PAYLOAD: [u8; 1] = [0x01];
 const MAX_REQUEST_HEADERS_PAYLOAD: usize = 16 * 1024;
 const MAX_EARLY_REQUEST_BUFFER: usize = MAX_REQUEST_HEADERS_PAYLOAD + 16;
 
@@ -45,7 +46,7 @@ impl H3Engine {
             control_stream: None,
             inbound_uni_pending_type: None,
             inbound_uni_pending_buf: Vec::new(),
-            inbound_uni_state: InboundUniState::NeedType,
+            inbound_uni_state: InboundUniState::Type,
             inbound_control_stream: None,
             pending_request_stream: None,
             inbound_request_stream: None,
@@ -143,14 +144,39 @@ impl H3Engine {
                         }
                     };
 
-                    let mut response =
+                    let mut response_headers =
                         Vec::with_capacity(header_len + RESPONSE_HEADERS_PAYLOAD.len());
-                    response.extend_from_slice(&frame_header[..header_len]);
-                    response.extend_from_slice(&RESPONSE_HEADERS_PAYLOAD);
+                    response_headers.extend_from_slice(&frame_header[..header_len]);
+                    response_headers.extend_from_slice(&RESPONSE_HEADERS_PAYLOAD);
 
                     out.push(EngineCommand::Quic(QuicCommand::StreamWriteOwned {
                         id,
-                        data: response,
+                        data: response_headers,
+                        fin: false,
+                    }));
+
+                    let data_header_len = match h3_frame::encode_frame_header(
+                        h3_frame::FrameHeader {
+                            ty: consts::FRAME_TYPE_DATA,
+                            len: RESPONSE_DATA_PAYLOAD.len() as u64,
+                        },
+                        &mut frame_header,
+                    ) {
+                        Ok(len) => len,
+                        Err(_) => {
+                            self.close_request_with(out, consts::H3_FRAME_ERROR);
+                            return;
+                        }
+                    };
+
+                    let mut response_data =
+                        Vec::with_capacity(data_header_len + RESPONSE_DATA_PAYLOAD.len());
+                    response_data.extend_from_slice(&frame_header[..data_header_len]);
+                    response_data.extend_from_slice(&RESPONSE_DATA_PAYLOAD);
+
+                    out.push(EngineCommand::Quic(QuicCommand::StreamWriteOwned {
+                        id,
+                        data: response_data,
                         fin: true,
                     }));
                     return;
@@ -275,7 +301,7 @@ impl Engine for H3Engine {
                 if self.inbound_uni_pending_type.is_none() {
                     self.inbound_uni_pending_type = Some(id);
                     self.inbound_uni_pending_buf.clear();
-                    self.inbound_uni_state = InboundUniState::NeedType;
+                    self.inbound_uni_state = InboundUniState::Type;
                 }
             }
             EngineEvent::Quic(QuicEvent::StreamOpened {
@@ -306,7 +332,7 @@ impl Engine for H3Engine {
 
                     loop {
                         match self.inbound_uni_state {
-                            InboundUniState::NeedType => {
+                            InboundUniState::Type => {
                                 let (stream_ty, consumed) =
                                     match varint::decode(&self.inbound_uni_pending_buf) {
                                         Ok(parsed) => parsed,
@@ -333,9 +359,9 @@ impl Engine for H3Engine {
                                 // M1/M1.2 simplicity: front-drain from Vec. This is O(n);
                                 // a cursor/ring-buffer is a likely M2+ follow-up.
                                 self.inbound_uni_pending_buf.drain(0..consumed);
-                                self.inbound_uni_state = InboundUniState::NeedFrameHeader;
+                                self.inbound_uni_state = InboundUniState::FrameHeader;
                             }
-                            InboundUniState::NeedFrameHeader => {
+                            InboundUniState::FrameHeader => {
                                 let (frame_header, consumed) = match h3_frame::decode_frame_header(
                                     &self.inbound_uni_pending_buf,
                                 ) {
@@ -374,9 +400,9 @@ impl Engine for H3Engine {
 
                                 self.inbound_uni_pending_buf.drain(0..consumed);
                                 self.inbound_uni_state =
-                                    InboundUniState::NeedPayload { len: payload_len };
+                                    InboundUniState::Payload { len: payload_len };
                             }
-                            InboundUniState::NeedPayload { len } => {
+                            InboundUniState::Payload { len } => {
                                 if self.inbound_uni_pending_buf.len() < len {
                                     if fin {
                                         self.close_with(out, consts::H3_FRAME_ERROR);
@@ -387,7 +413,7 @@ impl Engine for H3Engine {
                                 self.inbound_uni_pending_buf.drain(0..len);
                                 self.inbound_control_stream = Some(id);
                                 self.inbound_uni_pending_type = None;
-                                self.inbound_uni_state = InboundUniState::NeedType;
+                                self.inbound_uni_state = InboundUniState::Type;
 
                                 if let Some(req_id) = self.pending_request_stream {
                                     self.pending_request_stream = None;

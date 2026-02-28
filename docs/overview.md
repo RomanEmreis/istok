@@ -9,6 +9,6 @@ Istok is an HTTP/3-first server engine in Rust.
 - Deterministic testing via mock transport
 
 ## Layering
-- Protocol core (no_std): frames, QPACK, H3 state machine
+- Protocol core (no_std): frames, H3 state machine
 - Transport abstraction: datagrams, timers, crypto glue
 - Runtime glue + adapters: tokio transport, server API, examples

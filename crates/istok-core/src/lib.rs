@@ -3,5 +3,5 @@
 extern crate alloc;
 
 pub mod codec;
-pub mod h3;
 pub mod error;
+pub mod h3;

@@ -45,10 +45,7 @@ pub fn decode_frame_header(input: &[u8]) -> Result<(FrameHeader, usize), Error> 
     let (ty, ty_len) = varint::decode(input)?;
     let (len, len_len) = varint::decode(&input[ty_len..])?;
 
-    Ok((
-        FrameHeader { ty, len },
-        ty_len + len_len,
-    ))
+    Ok((FrameHeader { ty, len }, ty_len + len_len))
 }
 
 /// Encode an HTTP/3 frame header into `out`.
@@ -96,9 +93,18 @@ mod tests {
     #[test]
     fn roundtrip_header() {
         let cases = [
-            FrameHeader { ty: consts::FRAME_TYPE_DATA, len: 0 },
-            FrameHeader { ty: consts::FRAME_TYPE_HEADERS, len: 5 },
-            FrameHeader { ty: consts::FRAME_TYPE_SETTINGS, len: 16_383 },
+            FrameHeader {
+                ty: consts::FRAME_TYPE_DATA,
+                len: 0,
+            },
+            FrameHeader {
+                ty: consts::FRAME_TYPE_HEADERS,
+                len: 5,
+            },
+            FrameHeader {
+                ty: consts::FRAME_TYPE_SETTINGS,
+                len: 16_383,
+            },
             FrameHeader {
                 ty: consts::FRAME_TYPE_GOAWAY,
                 len: varint::VARINT_MAX,
@@ -138,7 +144,10 @@ mod tests {
     fn malformed_truncated_varint_in_header() {
         // Type varint present, length varint indicates 8-byte encoding but bytes are missing.
         let input = [consts::FRAME_TYPE_DATA as u8, 0b11 << 6, 0x00, 0x01];
-        assert_eq!(decode_frame_header(&input).unwrap_err(), Error::VarInt(varint::VarIntError::BufferTooSmall));
+        assert_eq!(
+            decode_frame_header(&input).unwrap_err(),
+            Error::VarInt(varint::VarIntError::BufferTooSmall)
+        );
     }
 
     #[test]
@@ -153,7 +162,10 @@ mod tests {
         buf[header_len..header_len + 3].copy_from_slice(&[1, 2, 3]);
         let total = header_len + 3;
 
-        assert_eq!(decode_frame(&buf[..total]).unwrap_err(), Error::LengthExceedsInput);
+        assert_eq!(
+            decode_frame(&buf[..total]).unwrap_err(),
+            Error::LengthExceedsInput
+        );
     }
 
     #[test]
@@ -191,6 +203,9 @@ mod tests {
             len: 16_384,
         };
         let mut buf = [0u8; 2];
-        assert_eq!(encode_frame_header(header, &mut buf).unwrap_err(), Error::BufferTooSmall);
+        assert_eq!(
+            encode_frame_header(header, &mut buf).unwrap_err(),
+            Error::BufferTooSmall
+        );
     }
 }
