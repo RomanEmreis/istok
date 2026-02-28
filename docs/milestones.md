@@ -225,51 +225,222 @@ Keep payloads minimal and deterministic (e.g., HEADERS payload `[0x00]`, DATA pa
 
 ## M2 — QPACK (minimal)
 
-**Status:** in progress
+**Goal:** Replace the opaque `[0x00]` HEADERS placeholder from M1.x with
+real QPACK-encoded header blocks. Static table only — no dynamic table, no
+Huffman. Full design in `docs/rfcs/0002-qpack-minimal.md`.
 
-Design: see `docs/rfcs/0002-qpack-minimal.md`
+---
 
-### Scope
+### M2.0 — Prefix integer codec
 
-Static-table-only QPACK (RFC 9204). No dynamic table. No Huffman encoding.
-Replaces the opaque `[0x00]` HEADERS placeholder from M1.x with real wire format.
+**Status:** pending
 
-**Included:**
-- Prefix integer codec (RFC 9204 §C.1) — separate from QUIC varint
-- Static table (99 entries, RFC 9204 Appendix A): lookup by index + by (name, value)
-- Encoder: static-first field representations, literal fallback, no Huffman (H=0)
-- Decoder: visitor pattern (`no_std + no_alloc`), static-only, rejects RIC > 0
-- Engine: open QPACK encoder/decoder streams on boot; accept inbound QPACK streams
-- Integration: real QPACK in response HEADERS; decode inbound request HEADERS
-- Fuzz target: `fuzz_qpack_decode`
+#### Scope
 
-**Excluded:**
-- Dynamic table (deferred indefinitely)
-- Huffman encoding/decoding (deferred to M3)
+New codec module `istok-core/src/codec/prefix_int.rs`. QPACK uses a different
+integer encoding than QUIC varint (RFC 9204 §C.1, same scheme as HPACK RFC 7541
+§5.1): N prefix bits are owned by the surrounding instruction byte; overflow
+extends into subsequent bytes with a 0x80 continuation flag.
 
-### Acceptance tests
+#### Acceptance tests
 
-- [ ] prefix integer roundtrip, malformed-rejection, boundary tests
-- [ ] static table: correct entries at known indices, lookup hits/misses
-- [ ] encoder: exact static hit → Indexed Field Line; name-only hit → Literal With Ref; no hit → Literal Without Ref
-- [ ] decoder: all three instruction types decoded correctly (static refs, literals)
-- [ ] decoder: rejects RIC > 0 with `DynamicTableRequired`
-- [ ] decoder: rejects H=1 string with `HuffmanNotSupported`
-- [ ] engine: QPACK streams opened on boot (type bytes 0x02, 0x03)
-- [ ] engine: inbound QPACK streams accepted without close
-- [ ] integration: request HEADERS decoded; response HEADERS encoded with real fields
+- [ ] roundtrip: values 0, 1, prefix_max−1, prefix_max, prefix_max+1, 2^14, 2^21, 2^28 across prefix widths 1–8
+- [ ] decode: known RFC 9204 Appendix B.1 example vectors produce correct values
+- [ ] decode: empty input → `BufferTooSmall`
+- [ ] decode: extension chain truncated mid-byte → `BufferTooSmall`
+- [ ] decode: extension chain exceeds 5 bytes → `Overflow`
+- [ ] encode: `BufferTooSmall` when output slice too short
+- [ ] encode: values beyond practical cap → `ValueTooLarge`
 
-### DoD checklist
+#### DoD checklist
 
 - [ ] All acceptance tests green
 - [ ] Clippy clean
-- [ ] Fuzz target added and CI fuzz job updated
 - [ ] Milestones.md updated
 
-### no_std / min-deps notes
+#### no_std / min-deps notes
 
-All codec code (`prefix_int`, `qpack::*`) uses `core` only — no `alloc` required.
-Visitor-pattern decoder avoids any allocation. Engine still uses `Vec` (unchanged).
+`core` only. No allocation. `encode` writes into caller-supplied `&mut [u8]`.
+
+---
+
+### M2.1 — Static table
+
+**Status:** pending
+
+#### Scope
+
+`istok-core/src/qpack/static_table.rs` — the 99-entry static table from RFC
+9204 Appendix A as `const`/`static` byte-slice pairs, plus two lookup functions.
+
+```
+entry(index) -> Option<(&'static [u8], &'static [u8])>
+lookup(name, value) -> Option<(usize, bool)>   // (index, exact_value_match)
+```
+
+#### Acceptance tests
+
+- [ ] `entry(0)` → `(b":authority", b"")`
+- [ ] `entry(1)` → `(b":path", b"/")`
+- [ ] `entry(25)` → `(b":status", b"200")`
+- [ ] `entry(98)` → last valid entry per RFC 9204 Appendix A
+- [ ] `entry(99)` → `None` (out of range)
+- [ ] `lookup(b":method", b"GET")` → exact hit at known index
+- [ ] `lookup(b":status", b"200")` → exact hit
+- [ ] `lookup(b":status", b"999")` → name-only hit (index to `:status` entry, `value_matches=false`)
+- [ ] `lookup(b"x-custom", b"val")` → `None`
+
+#### DoD checklist
+
+- [ ] All acceptance tests green
+- [ ] Clippy clean
+- [ ] Milestones.md updated
+
+#### no_std / min-deps notes
+
+Entire table is `&'static [u8]` pairs in a `const` array. No `alloc`, no `std`.
+
+---
+
+### M2.2 — Encoder
+
+**Status:** pending
+
+#### Scope
+
+`istok-core/src/qpack/encoder.rs` — encodes a slice of `HeaderField` pairs into
+a QPACK header block. Always produces RIC=0 (static-only). No Huffman (H=0).
+
+Field line selection (static-table-first):
+
+| Condition | Wire representation |
+|---|---|
+| exact `(name, value)` in static table | Indexed Field Line `0b11` + 6-bit index |
+| name-only hit | Literal With Static Name Ref `0b0001` + 4-bit index + literal value |
+| no hit | Literal Without Name Ref `0b001` + literal name + literal value |
+
+Writes: Required Insert Count (0) + S=0 Delta Base (0) + field lines.
+
+#### Acceptance tests
+
+- [ ] encode `[(:status, "200")]` → exact Indexed Field Line at static index 25
+- [ ] encode `[(:status, "999")]` → Literal With Static Name Ref at `:status` index
+- [ ] encode `[("x-custom", "val")]` → Literal Without Name Ref
+- [ ] encode multiple fields → all present in output, order preserved
+- [ ] output always starts with two zero bytes (RIC=0, Delta Base=0 for 1-byte prefixes)
+- [ ] `BufferTooSmall` when output slice cannot fit encoded block
+- [ ] roundtrip: encoded output fed to decoder (M2.3) produces original fields
+
+#### DoD checklist
+
+- [ ] All acceptance tests green
+- [ ] Clippy clean
+- [ ] Milestones.md updated
+
+#### no_std / min-deps notes
+
+No allocation. Takes `&mut [u8]` output buffer. `HeaderField<'a>` borrows caller data.
+
+---
+
+### M2.3 — Decoder
+
+**Status:** pending
+
+#### Scope
+
+`istok-core/src/qpack/decoder.rs` — decodes a QPACK header block using a
+visitor/callback pattern. Static-table only: rejects RIC > 0 and Huffman strings.
+
+Handled instruction types (RFC 9204 §3.2):
+- `0b11xxxxxx` — Indexed Field Line, static (S=1); reject S=0 (dynamic)
+- `0b0001xxxx` — Literal With Name Reference, static; reject dynamic
+- `0b001xxxxx` — Literal Without Name Reference
+
+Error cases that must close with `H3_QPACK_DECOMPRESSION_FAILED` when wired
+into the engine (M2.4): `DynamicTableRequired`, `InvalidIndex`, `UnexpectedEnd`.
+`HuffmanNotSupported` is also a connection error at the engine level.
+
+Fuzz target `fuzz_qpack_decode` added after this sub-milestone is green.
+
+#### Acceptance tests
+
+- [ ] decode Indexed Field Line (static) → correct `(name, value)` from static table
+- [ ] decode Literal With Static Name Ref → correct name from table, literal value
+- [ ] decode Literal Without Name Ref → both name and value from literal bytes
+- [ ] decode multiple fields in sequence → visitor called once per field, in order
+- [ ] RIC ≠ 0 in prefix → `DynamicTableRequired`
+- [ ] Indexed Field Line with S=0 (dynamic) → `DynamicTableRequired`
+- [ ] Literal With Name Ref with dynamic flag → `DynamicTableRequired`
+- [ ] index out of static table range → `InvalidIndex`
+- [ ] H=1 string length prefix → `HuffmanNotSupported`
+- [ ] truncated field mid-parse → `UnexpectedEnd`
+- [ ] empty input (after two-byte prefix) → visitor never called, `Ok(())`
+- [ ] roundtrip with M2.2 encoder output → original fields recovered
+
+#### DoD checklist
+
+- [ ] All acceptance tests green
+- [ ] Clippy clean
+- [ ] Fuzz target `fuzz_qpack_decode` added to `crates/istok-core/fuzz/`
+- [ ] `fuzz_qpack_decode` added to CI fuzz job (30 s run)
+- [ ] Milestones.md updated
+
+#### no_std / min-deps notes
+
+Visitor closure — zero allocation. Input references are borrowed; static-table
+names are `&'static [u8]`. Fully `no_std + no_alloc`.
+
+---
+
+### M2.4 — Engine integration
+
+**Status:** pending
+
+#### Scope
+
+Wire the codec work from M2.0–M2.3 into `h3_engine.rs` and the mock harness.
+Replace placeholder bytes with real QPACK. Open QPACK streams on boot. Accept
+inbound QPACK streams without closing the connection.
+
+**Changes:**
+
+1. `Boot` handler — open QPACK encoder and decoder streams (type bytes `0x02`,
+   `0x03`); stream-type varint written, no further data (static-only).
+2. `InboundUniState::Type` — accept stream types `0x02` and `0x03`; transition
+   to a new `InboundUniState::Ignored` variant that discards all further data.
+3. Response HEADERS — replace `RESPONSE_HEADERS_PAYLOAD: [u8; 1] = [0x00]` with
+   `qpack::encode(&[(:status, "200"), (content-type, "text/plain")], &mut buf)`.
+4. Inbound HEADERS payload — call `qpack::decode(payload, |name, value| { … })`;
+   on `DynamicTableRequired`, `InvalidIndex`, `HuffmanNotSupported`, or
+   `UnexpectedEnd` → `close_request_with(H3_QPACK_DECOMPRESSION_FAILED)`.
+5. New constants in `consts.rs`: `H3_QPACK_DECOMPRESSION_FAILED = 0x0200`,
+   `H3_QPACK_ENCODER_STREAM_ERROR = 0x0201`, `H3_QPACK_DECODER_STREAM_ERROR = 0x0202`.
+
+#### Acceptance tests
+
+- [ ] on `Boot`: three unidirectional stream opens emitted (control, QPACK encoder, QPACK decoder)
+- [ ] QPACK encoder stream write carries type byte `0x02` only
+- [ ] QPACK decoder stream write carries type byte `0x03` only
+- [ ] inbound stream type `0x02` accepted, no close command emitted
+- [ ] inbound stream type `0x03` accepted, no close command emitted
+- [ ] data on an accepted QPACK stream after type byte → silently discarded, no close
+- [ ] response HEADERS payload decodes (via M2.3) to `:status 200` and `content-type`
+- [ ] inbound HEADERS with RIC > 0 → `CloseConnection(H3_QPACK_DECOMPRESSION_FAILED)`
+- [ ] inbound HEADERS with out-of-range static index → `CloseConnection(H3_QPACK_DECOMPRESSION_FAILED)`
+- [ ] happy-path: static-encoded request HEADERS in → real QPACK response HEADERS + DATA out
+
+#### DoD checklist
+
+- [ ] All acceptance tests green
+- [ ] Clippy clean
+- [ ] `cargo test --workspace --locked` green
+- [ ] Milestones.md updated
+
+#### no_std / min-deps notes
+
+Engine continues to use `alloc::vec::Vec` (unchanged). Codec calls are
+allocation-free; output buffers are stack-allocated `[u8; N]` slices.
 
 ---
 
