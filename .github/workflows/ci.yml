@@ -51,3 +51,26 @@ jobs:
         run: cargo build -p istok-core --no-default-features --locked
       - name: Build istok-core with alloc only
         run: cargo build -p istok-core --no-default-features --features alloc --locked
+
+  fuzz:
+    name: Fuzz (build + short run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+      - name: Build fuzz targets
+        working-directory: crates/istok-core
+        run: cargo fuzz build
+      - name: Fuzz varint decode (30s)
+        working-directory: crates/istok-core
+        env:
+          ASAN_OPTIONS: "detect_odr_violation=0:quarantine_size_mb=1:malloc_context_size=0"
+        run: cargo +nightly fuzz run fuzz_varint_decode -- -max_total_time=30 -max_len=8 -rss_limit_mb=256
+      - name: Fuzz frame decode (30s)
+        working-directory: crates/istok-core
+        env:
+          ASAN_OPTIONS: "detect_odr_violation=0:quarantine_size_mb=1:malloc_context_size=0"
+        run: cargo +nightly fuzz run fuzz_frame_decode -- -max_total_time=30 -max_len=16 -rss_limit_mb=256

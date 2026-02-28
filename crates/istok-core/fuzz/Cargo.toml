@@ -1,0 +1,26 @@
+[workspace]
+
+[package]
+name = "istok-core-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# libfuzzer-sys provides the fuzz_target! macro and links against libFuzzer.
+# Requires a nightly toolchain — run via `cargo fuzz build` / `cargo fuzz run`.
+[dependencies]
+libfuzzer-sys = "0.4"
+istok-core = { path = ".." }
+
+[[bin]]
+name = "fuzz_varint_decode"
+path = "fuzz_targets/fuzz_varint_decode.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_frame_decode"
+path = "fuzz_targets/fuzz_frame_decode.rs"
+doc = false

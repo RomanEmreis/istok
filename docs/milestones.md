@@ -15,7 +15,7 @@ Varint and H3 frame codecs with tests. QPACK excluded (see M2).
 - [x] varint codec + tests
 - [x] H3 frame codec + tests
 - [x] SETTINGS payload encoding (M0: empty) + tests
-- [ ] fuzz target(s) for frame/varint parsing (optional in v0 CI)
+- [x] fuzz target(s) for frame/varint parsing (optional in v0 CI)
 
 ### DoD checklist
 

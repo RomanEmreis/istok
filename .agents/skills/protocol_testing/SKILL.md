@@ -53,13 +53,40 @@ Every codec (varint, frame) needs three test classes:
 | Malformed rejection | Known-bad byte sequences must return an error, not panic |
 | Boundary conditions | Max varint value, empty payload, max frame length |
 
-## Fuzzing (future)
+## Fuzzing
 
-Fuzz targets will live in `fuzz/` and cover:
-- Frame decoding (`Frame::parse`)
-- QPACK decoding (once M2 is active)
+Fuzz targets live in `crates/istok-core/fuzz/fuzz_targets/` and are built with
+`cargo fuzz` (nightly required). Currently covering:
+- `fuzz_varint_decode` — `varint::decode`
+- `fuzz_frame_decode` — `h3_frame::decode_frame_header`
+
+To run locally (`+nightly` is required — cargo-fuzz uses `-Z` flags):
+```sh
+cd crates/istok-core
+cargo +nightly fuzz run fuzz_varint_decode
+cargo +nightly fuzz run fuzz_frame_decode
+```
+
+Runs indefinitely until `Ctrl+C`. Corpus is saved in `fuzz/corpus/` and seeds future runs.
+
+For a time-bounded run (CI-style):
+```sh
+ASAN_OPTIONS="detect_odr_violation=0:quarantine_size_mb=1:malloc_context_size=0" \
+cargo +nightly fuzz run fuzz_varint_decode -- -max_total_time=30 -max_len=8 -rss_limit_mb=256
+```
+
+Use `max_len=8` for varint (QUIC varint max is 8 bytes) and `max_len=16` for frame
+decode (type varint + length varint = up to 16 bytes).
 
 Rule: crashes are bugs. The engine must never panic on arbitrary input.
+
+### Adding a new fuzz target
+
+1. Add a `fuzz_targets/<name>.rs` file (see existing targets for the one-liner pattern).
+2. Add a `[[bin]]` entry to `crates/istok-core/fuzz/Cargo.toml`.
+3. **The fuzz `Cargo.toml` must have `[workspace]` at the top** — without it, Cargo
+   treats the fuzz crate as part of the parent workspace and `cargo fuzz` fails.
+   This is already present; do not remove it when editing the file.
 
 ## Anti-patterns
 
