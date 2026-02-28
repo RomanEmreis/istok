@@ -2,8 +2,8 @@ extern crate alloc;
 
 use istok_core::codec::{h3_frame, varint};
 use istok_core::h3::consts;
-use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
 use istok_h3::H3Engine;
+use istok_h3::mock::{ExpectCommand, MockHarness, ScriptStep};
 use istok_transport::{StreamId, StreamKind};
 
 #[test]
@@ -15,8 +15,8 @@ fn active_request_buffer_over_cap_closes_connection() {
     let request_stream_id = StreamId(0);
 
     let mut control_buf = [0u8; 16];
-    let control_type_len =
-        varint::encode(consts::STREAM_TYPE_CONTROL, &mut control_buf).expect("control type encodes");
+    let control_type_len = varint::encode(consts::STREAM_TYPE_CONTROL, &mut control_buf)
+        .expect("control type encodes");
     let control_frame_len = h3_frame::encode_frame_header(
         h3_frame::FrameHeader {
             ty: consts::FRAME_TYPE_SETTINGS,

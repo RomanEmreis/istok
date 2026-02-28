@@ -23,9 +23,9 @@ pub struct H3Engine {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InboundUniState {
-    NeedType,
-    NeedFrameHeader,
-    NeedPayload { len: usize },
+    Type,
+    FrameHeader,
+    Payload { len: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,7 +45,7 @@ impl H3Engine {
             control_stream: None,
             inbound_uni_pending_type: None,
             inbound_uni_pending_buf: Vec::new(),
-            inbound_uni_state: InboundUniState::NeedType,
+            inbound_uni_state: InboundUniState::Type,
             inbound_control_stream: None,
             pending_request_stream: None,
             inbound_request_stream: None,
@@ -275,7 +275,7 @@ impl Engine for H3Engine {
                 if self.inbound_uni_pending_type.is_none() {
                     self.inbound_uni_pending_type = Some(id);
                     self.inbound_uni_pending_buf.clear();
-                    self.inbound_uni_state = InboundUniState::NeedType;
+                    self.inbound_uni_state = InboundUniState::Type;
                 }
             }
             EngineEvent::Quic(QuicEvent::StreamOpened {
@@ -306,7 +306,7 @@ impl Engine for H3Engine {
 
                     loop {
                         match self.inbound_uni_state {
-                            InboundUniState::NeedType => {
+                            InboundUniState::Type => {
                                 let (stream_ty, consumed) =
                                     match varint::decode(&self.inbound_uni_pending_buf) {
                                         Ok(parsed) => parsed,
@@ -333,9 +333,9 @@ impl Engine for H3Engine {
                                 // M1/M1.2 simplicity: front-drain from Vec. This is O(n);
                                 // a cursor/ring-buffer is a likely M2+ follow-up.
                                 self.inbound_uni_pending_buf.drain(0..consumed);
-                                self.inbound_uni_state = InboundUniState::NeedFrameHeader;
+                                self.inbound_uni_state = InboundUniState::FrameHeader;
                             }
-                            InboundUniState::NeedFrameHeader => {
+                            InboundUniState::FrameHeader => {
                                 let (frame_header, consumed) = match h3_frame::decode_frame_header(
                                     &self.inbound_uni_pending_buf,
                                 ) {
@@ -374,9 +374,9 @@ impl Engine for H3Engine {
 
                                 self.inbound_uni_pending_buf.drain(0..consumed);
                                 self.inbound_uni_state =
-                                    InboundUniState::NeedPayload { len: payload_len };
+                                    InboundUniState::Payload { len: payload_len };
                             }
-                            InboundUniState::NeedPayload { len } => {
+                            InboundUniState::Payload { len } => {
                                 if self.inbound_uni_pending_buf.len() < len {
                                     if fin {
                                         self.close_with(out, consts::H3_FRAME_ERROR);
@@ -387,7 +387,7 @@ impl Engine for H3Engine {
                                 self.inbound_uni_pending_buf.drain(0..len);
                                 self.inbound_control_stream = Some(id);
                                 self.inbound_uni_pending_type = None;
-                                self.inbound_uni_state = InboundUniState::NeedType;
+                                self.inbound_uni_state = InboundUniState::Type;
 
                                 if let Some(req_id) = self.pending_request_stream {
                                     self.pending_request_stream = None;

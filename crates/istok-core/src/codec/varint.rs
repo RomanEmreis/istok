@@ -64,33 +64,27 @@ pub fn decode(input: &[u8]) -> Result<(u64, usize), VarIntError> {
         return Err(VarIntError::BufferTooSmall);
     }
 
-    let mut v: u64 = 0;
-
-    match len {
-        1 => {
-            v = (first & 0b0011_1111) as u64;
-        }
-        2 => {
-            v = ((first as u64 & 0b0011_1111) << 8) | input[1] as u64;
-        }
+    let v: u64 = match len {
+        1 => (first & 0b0011_1111) as u64,
+        2 => ((first as u64 & 0b0011_1111) << 8) | input[1] as u64,
         4 => {
-            v = ((first as u64 & 0b0011_1111) << 24)
+            ((first as u64 & 0b0011_1111) << 24)
                 | (input[1] as u64) << 16
                 | (input[2] as u64) << 8
-                | (input[3] as u64);
+                | (input[3] as u64)
         }
         8 => {
-            v = ((first as u64 & 0b0011_1111) << 56)
+            ((first as u64 & 0b0011_1111) << 56)
                 | (input[1] as u64) << 48
                 | (input[2] as u64) << 40
                 | (input[3] as u64) << 32
                 | (input[4] as u64) << 24
                 | (input[5] as u64) << 16
                 | (input[6] as u64) << 8
-                | (input[7] as u64);
+                | (input[7] as u64)
         }
         _ => return Err(VarIntError::InvalidEncoding),
-    }
+    };
 
     // v is by construction <= 2^62-1, but keep the guard for safety.
     if v > VARINT_MAX {

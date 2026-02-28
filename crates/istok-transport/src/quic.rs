@@ -69,7 +69,11 @@ pub enum QuicCommand<'a> {
 
     /// Write bytes to stream (owned; mock can enforce full).
     #[cfg(feature = "alloc")]
-    StreamWriteOwned { id: StreamId, data: Vec<u8>, fin: bool },
+    StreamWriteOwned {
+        id: StreamId,
+        data: Vec<u8>,
+        fin: bool,
+    },
 
     /// Reset stream (sender side).
     ResetStream { id: StreamId, app_error: u64 },

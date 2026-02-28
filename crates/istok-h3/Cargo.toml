@@ -3,6 +3,9 @@ name = "istok-h3"
 version = "0.0.1"
 edition = "2024"
 
+[features]
+std = []
+
 [dependencies]
 istok-core = { path = "../istok-core" }
 istok-transport = { path = "../istok-transport" }

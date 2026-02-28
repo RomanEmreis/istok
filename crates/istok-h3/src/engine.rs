@@ -11,8 +11,13 @@ pub enum EngineEvent<'a> {
 /// Things engine wants the runtime to do.
 pub enum EngineCommand<'a> {
     Quic(QuicCommand<'a>),
-    ArmTimer { id: TimerId, deadline_ms_from_now: u64 },
-    CancelTimer { id: TimerId },
+    ArmTimer {
+        id: TimerId,
+        deadline_ms_from_now: u64,
+    },
+    CancelTimer {
+        id: TimerId,
+    },
 }
 
 /// Stable ids for protocol timers (PTO, delayed ACK, etc). Expand later.
