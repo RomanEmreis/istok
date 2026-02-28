@@ -18,7 +18,7 @@ Istok is an HTTP/3-first server engine in Rust.
 
 ## Status
 
-**pre-alpha** — active milestone: M1.6 — Response framing semantics (HEADERS + DATA, multi-frame)
+**pre-alpha** — active milestone: M2 — QPACK (minimal)
 
 **Completed:**
 - M0: varint codec, H3 frame codec, SETTINGS encoding
@@ -28,9 +28,7 @@ Istok is an HTTP/3-first server engine in Rust.
 - M1.3: request stream happy-path (opaque HEADERS in → HEADERS out)
 - M1.4: protocol error paths (malformed frames, unexpected stream types)
 - M1.5: request/control stream hardening
-
-**In progress:**
-- M1.6: respond with HEADERS + DATA frames; correct FIN placement; ordering tests
+- M1.6: HEADERS + DATA response framing; correct FIN placement; ordering tests
 
 ## Milestones
 See `docs/milestones.md`.
