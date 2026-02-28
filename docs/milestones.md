@@ -233,7 +233,7 @@ Huffman. Full design in `docs/rfcs/0002-qpack-minimal.md`.
 
 ### M2.0 — Prefix integer codec
 
-**Status:** pending
+**Status:** done
 
 #### Scope
 
@@ -244,19 +244,19 @@ extends into subsequent bytes with a 0x80 continuation flag.
 
 #### Acceptance tests
 
-- [ ] roundtrip: values 0, 1, prefix_max−1, prefix_max, prefix_max+1, 2^14, 2^21, 2^28 across prefix widths 1–8
-- [ ] decode: known RFC 9204 Appendix B.1 example vectors produce correct values
-- [ ] decode: empty input → `BufferTooSmall`
-- [ ] decode: extension chain truncated mid-byte → `BufferTooSmall`
-- [ ] decode: extension chain exceeds 5 bytes → `Overflow`
-- [ ] encode: `BufferTooSmall` when output slice too short
-- [ ] encode: values beyond practical cap → `ValueTooLarge`
+- [x] roundtrip: values 0, 1, prefix_max−1, prefix_max, prefix_max+1, 2^14, 2^21, 2^28 across prefix widths 1–8
+- [x] decode: known RFC 9204 Appendix B.1 example vectors produce correct values
+- [x] decode: empty input → `BufferTooSmall`
+- [x] decode: extension chain truncated mid-byte → `BufferTooSmall`
+- [x] decode: extension chain exceeds 5 bytes → `Overflow`
+- [x] encode: `BufferTooSmall` when output slice too short
+- [x] encode: values beyond practical cap → `ValueTooLarge`
 
 #### DoD checklist
 
-- [ ] All acceptance tests green
-- [ ] Clippy clean
-- [ ] Milestones.md updated
+- [x] All acceptance tests green
+- [x] Clippy clean
+- [x] Milestones.md updated
 
 #### no_std / min-deps notes
 
