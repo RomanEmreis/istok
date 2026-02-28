@@ -63,7 +63,7 @@ jobs:
         run: cargo install cargo-fuzz
       - name: Build fuzz targets
         working-directory: crates/istok-core
-        run: cargo fuzz build
+        run: cargo +nightly fuzz build
       - name: Fuzz varint decode (30s)
         working-directory: crates/istok-core
         env:
