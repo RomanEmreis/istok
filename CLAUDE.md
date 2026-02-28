@@ -7,14 +7,19 @@ Goals: correctness, clean layering, minimal dependencies, path to `no_std`.
 
 ## Active milestone
 
-**M1.6 — Response framing semantics (multi-frame, multi-write)**
+**M2 — QPACK (minimal)**
 
-Scope (see `docs/milestones.md#m16`):
-- Respond with HEADERS + DATA (opaque bytes, no QPACK yet)
-- HEADERS frame written with `fin=false`, DATA frame with `fin=true`
-- Deterministic MockHarness tests for ordering and FIN behavior
+Design: `docs/rfcs/0002-qpack-minimal.md`
+Scope: `docs/milestones.md#m2`
 
-Do not start M2 work unless M1.6 is fully checked off.
+Sub-milestones (implement in order):
+- M2.0: `codec/prefix_int.rs` — prefix integer encode/decode
+- M2.1: `qpack/static_table.rs` — 99-entry static table
+- M2.2: `qpack/encoder.rs` — static-first, no Huffman
+- M2.3: `qpack/decoder.rs` — visitor pattern, rejects RIC > 0 and H=1
+- M2.4: Engine integration — real QPACK in/out, QPACK streams on boot
+
+Do not start M3 work unless all M2 acceptance tests are checked off.
 
 ---
 

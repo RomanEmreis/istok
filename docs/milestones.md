@@ -225,11 +225,51 @@ Keep payloads minimal and deterministic (e.g., HEADERS payload `[0x00]`, DATA pa
 
 ## M2 — QPACK (minimal)
 
+**Status:** in progress
+
+Design: see `docs/rfcs/0002-qpack-minimal.md`
+
 ### Scope
 
-- [ ] minimal QPACK decoder/encoder for small header sets
-- [ ] integrate into M1.3 HEADERS handling
-- [ ] tests for small header sets
+Static-table-only QPACK (RFC 9204). No dynamic table. No Huffman encoding.
+Replaces the opaque `[0x00]` HEADERS placeholder from M1.x with real wire format.
+
+**Included:**
+- Prefix integer codec (RFC 9204 §C.1) — separate from QUIC varint
+- Static table (99 entries, RFC 9204 Appendix A): lookup by index + by (name, value)
+- Encoder: static-first field representations, literal fallback, no Huffman (H=0)
+- Decoder: visitor pattern (`no_std + no_alloc`), static-only, rejects RIC > 0
+- Engine: open QPACK encoder/decoder streams on boot; accept inbound QPACK streams
+- Integration: real QPACK in response HEADERS; decode inbound request HEADERS
+- Fuzz target: `fuzz_qpack_decode`
+
+**Excluded:**
+- Dynamic table (deferred indefinitely)
+- Huffman encoding/decoding (deferred to M3)
+
+### Acceptance tests
+
+- [ ] prefix integer roundtrip, malformed-rejection, boundary tests
+- [ ] static table: correct entries at known indices, lookup hits/misses
+- [ ] encoder: exact static hit → Indexed Field Line; name-only hit → Literal With Ref; no hit → Literal Without Ref
+- [ ] decoder: all three instruction types decoded correctly (static refs, literals)
+- [ ] decoder: rejects RIC > 0 with `DynamicTableRequired`
+- [ ] decoder: rejects H=1 string with `HuffmanNotSupported`
+- [ ] engine: QPACK streams opened on boot (type bytes 0x02, 0x03)
+- [ ] engine: inbound QPACK streams accepted without close
+- [ ] integration: request HEADERS decoded; response HEADERS encoded with real fields
+
+### DoD checklist
+
+- [ ] All acceptance tests green
+- [ ] Clippy clean
+- [ ] Fuzz target added and CI fuzz job updated
+- [ ] Milestones.md updated
+
+### no_std / min-deps notes
+
+All codec code (`prefix_int`, `qpack::*`) uses `core` only — no `alloc` required.
+Visitor-pattern decoder avoids any allocation. Engine still uses `Vec` (unchanged).
 
 ---
 
