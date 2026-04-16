@@ -2,6 +2,8 @@
 
 A deterministic HTTP/3 engine in Rust, built around a test-first state machine and explicit protocol semantics.
 
+> ⚠️ Pre-alpha: API and internals are not stable yet.
+
 ## Why
 
 Most HTTP/3 implementations are hard to reason about and test due to implicit state and non-deterministic behavior.
