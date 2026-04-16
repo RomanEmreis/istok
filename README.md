@@ -37,9 +37,6 @@ Core HTTP/3 engine is implemented and validated against a deterministic mock tra
 
 See [`docs/milestones.md`](docs/milestones.md) for the full roadmap.
 
-## Milestones
-See `docs/milestones.md`.
-
 ## Development
 - Formatting, linting, tests:
   - `cargo fmt --all`
