@@ -1,6 +1,15 @@
 # Istok
 
-Istok is an HTTP/3-first server engine in Rust.
+A deterministic HTTP/3 engine in Rust, built around a test-first state machine and explicit protocol semantics.
+
+## Why
+
+Most HTTP/3 implementations are hard to reason about and test due to implicit state and non-deterministic behavior.
+
+Istok takes a different approach:
+- deterministic state machine
+- scriptable transport (mock-first testing)
+- explicit protocol handling
 
 ## Goals
 - HTTP/3 correctness with clean layering
@@ -44,8 +53,9 @@ See [`docs/milestones.md`](docs/milestones.md) for the full roadmap.
   - `cargo test --workspace --locked`
 
 ## Testing philosophy
-We start with deterministic unit tests (mock QUIC streams), then add real-network integration tests.
+
+We start with deterministic unit tests (mock QUIC streams), then move to real-network integration.
 
 ## Contributing
-Architecture-impacting changes require an RFC in `docs/rfcs/`.
-See `.agents/AGENTS.md` for agent roles and workflow constraints.
+Architecture-impacting changes require an RFC in [`docs/rfcs/`](docs/rfcs/).
+See [`.agents/AGENTS.md`](.agents/AGENTS.md) for agent roles and workflow constraints.
